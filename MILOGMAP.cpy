@@ -2,6 +2,12 @@
       * MILOGMAP - MILOG (CLKMLOG.DAT) RECORD LAYOUT WITH PER-        *
       * TRANSACTION FIELD MAPS FOR ALL MBI TRANSACTIONS - MY AND SG   *
       *---------------------------------------------------------------*
+      * NOTE: THIS MAPS THE FIXED-8000 DAILY BATCH EXTRACT FILE       *
+      * (CLKMLOG.DAT WRITTEN BY MIDXEIS) ONLY.  DO NOT USE IT ON THE  *
+      * ONLINE MILOG1/2/3 VSAM FILES (xxxMBI.ONLVSM.*.MILOGn) - THOSE *
+      * ARE VARIABLE LENGTH (252-8047 MY / 252-8349 SG) WITH A 42-    *
+      * BYTE KEY AND COMP-3 PACKED DATE/TIME.  USE MILOGONL INSTEAD.  *
+      *---------------------------------------------------------------*
       * BASE RECORD ...... CLKMLOG-RECORD (8000 BYTES, REF MILOGDAT)  *
       * REQUEST MAPS ..... ML48-<TXN> REDEFINES the DE48 additional-  *
       *                    data area (bytes 811-1809 of the record).  *
