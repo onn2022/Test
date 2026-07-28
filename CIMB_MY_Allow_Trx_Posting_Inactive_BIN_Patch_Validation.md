@@ -8,6 +8,8 @@ FS Sign-Off & Acknowledgement Form (FS v1.1, CIMB MY/CL/FS/001)
 **Code baseline:** MY generated user base — `Cardlink Code/extracted_my/extracted_MY_members`
 (`MIPYMT.txt`, `CPD030.txt`, `CPS948.txt`, `CPS148.txt`), snapshot June 2026, both patches
 confirmed **not yet applied** (`MMB00369`, `MCP00850`, `ALLOW-ON-US-BIN` → 0 hits)
+**Empirical evidence:** test region, pre-patch, prefix set to status 8 → MBI payment rejects
+with **action code 111**
 
 ---
 
@@ -19,14 +21,12 @@ confirmed **not yet applied** (`MMB00369`, `MCP00850`, `ALLOW-ON-US-BIN` → 0 h
 | Patch module types vs IG section 2 | **Match** (MIPYMT = CCP, CPD030 = COB) |
 | Sequence-number insertion slots | **All free**, no collisions, correct data levels |
 | COBOL syntax / scope integrity | **Valid** in all five insertion sites |
-| **MCP00850 (CPD030) functional correctness** | **OK** |
-| **MMB00369 (MIPYMT) functional correctness** | **FAILS — unreachable for an in-active BIN** |
+| MCP00850 (CPD030) functional correctness | **OK** |
+| MMB00369 (MIPYMT) functional correctness | **OK — confirmed reachable by the 111 reject** |
 | IG fallback section | **Incomplete** — CPD030 batch fallback missing |
 | TS section 1.1 scope statement | **Wrong text** — refers to a different change |
 
-The batch half of this change works. The online half does not fire in the scenario the
-change exists for, because `CPS948` filters in-active prefix records *before* MIPYMT reaches
-the patched line. Detail in section 4.
+Both patches are sound. The remaining items are documentation defects, not code defects.
 
 ---
 
@@ -92,118 +92,95 @@ No pre-existing `WS-ALLOW-*` or `ALLOW-ON-US-BIN` in either member. CPD030 alrea
 
 ---
 
-## 4. BLOCKER — MMB00369 never executes for an in-active BIN
+## 4. MMB00369 reachability — confirmed correct by the test-region 111
 
-### Evidence
-
-**(1) `CPS148` defines status `'8'` as in-active:**
-
-```cobol
-002300      03  CP-STATUS               PIC  X(01).
-002400          88  ACTIVE-PREFIX-REC        VALUE '1'.
-002500          88  INACTIVE-PREFIX-REC      VALUE '8'.
-```
-
-It also confirms the `CR-FLAG` values on the PCIF screen:
-`88 CP-FLAG-TYPE VALUE 'T'` / `CP-FLAG-RANGE 'R'` / `CP-FLAG-NTWK 'N'`.
-
-**(2) `CPS948` skips in-active records.** `CIA-CPPFXA-NEXT-REC` is the *only* read-next path
-used by the prefix search, and change `MCS00263` added a filter loop to it:
+The pre-patch test result settles this. MIPYMT raises action code **111** at exactly one
+place relevant here:
 
 ```cobol
-010000     IF ((CSCGIO-EIBRESP IS EQUAL DFHRESP(NORMAL))  OR
-010005         (CSCGIO-EIBRESP IS EQUAL DFHRESP(DUPKEY))) AND
-010010        (INACTIVE-PREFIX-REC)                                     MCS00263
-010020         GO TO CIA-CPPFXA-NEXT-REC                                MCS00263
-010030     END-IF.
+043900     IF  NOT-ON-US-TXN                                            V20MB016
+044000         MOVE '1'                TO MIC003-BYTE-MAP-IND (44)      V20MB016
+044300         MOVE 'NOT ON-US CARD NUMBER         '                    V20MB016
+044600         MOVE 111                TO MIC003-B039-ACTION-CODE       V20MB016
+044800         GO TO 9888-RETURN-TO-CICS.                               V20MB016
 ```
 
-So a `CP-STATUS = '8'` record is passed over as if it were not in the file.
+(The only other `111` in the member is at `106440`, a CPPLT read `NOTFND` with message
+`CARD NOT FOUND` — a different path, and not triggered by a prefix status change.)
 
-**(3) The PCIF sample in TS section 3.1 and IG Appendix A shows `STAT = 8` on _both_
-45993903 rows** — the `'T'` row (ORG 001 / TYPE 114) and the `'R'` row (ORG 000 / TYPE 000).
-
-**(4) All three CPS948 search legs therefore fail to match**, because each one obtains its
-record through the filtering `CIA-CPPFXA-NEXT-REC`:
-
-- `CIA-CHECK-ORG-TYPE-WITH-CARDNO` (`CP-FLAG-TYPE`) — record skipped, next record is a
-  different prefix, range test fails
-- `CIA-CHECK-ON-US-WITH-CARDNO` (`CP-FLAG-RANGE`) — same
-- `CIA-CHECK-NOT-ONUS-CARD-SCHEME` (`CP-FLAG-NTWK`) — same
-
-Control reaches `CIA-CHECK-NOT-VALD-CARD-SCHEME` → `GO TO CIA-QUAL-REJECT`:
+Reaching `044600` proves the earlier gate passed:
 
 ```cobol
-017300 CIA-QUAL-REJECT.
-017400     MOVE SPACE TO WS-CARD-SCHEME.
-017500     MOVE 998   TO WS-CARD-ORG-NMBR
-017600                   WS-CARD-TYPE-NMBR.
+043300     IF  NOT WS-ON-PREFIX  →  action code 912   ← NOT taken
+043900     IF  NOT-ON-US-TXN     →  action code 111   ← taken
 ```
 
-`CIA-QUAL-REJECT` never sets `WS-ON-PREFIX`; it stays `WS-NOT-ON-PREFIX`, set at `002400`
-on entry.
+So on a status-8 BIN, CPS948 returns **`WS-ON-PREFIX` = TRUE and `NOT-ON-US-TXN` = TRUE**.
+`MMB00369` inserts at `043902`, inside that same taken branch and ahead of the `111` moves —
+therefore **the patch executes and suppresses exactly this reject.** It is correctly placed.
 
-**(5) MIPYMT rejects at `043300`, six lines above the patch:**
+### Which CPS948 leg produces that state
+
+`CPS948` sets `WS-ON-PREFIX` TRUE in only three places. Two are ruled out here — the on-us
+type match at `004560` (record is inactive, and it would set `ON-US-TXN`, not `NOT-ON-US`)
+and the `CP-SCHEME = 'D'/'E'` branch at `004116` (scheme is `'V'`). That leaves
+`CIA-CHECK-NOT-ONUS-CARD-SCHEME`, the network leg:
 
 ```cobol
-043300     IF  NOT WS-ON-PREFIX                                         V20MB016
-043400         MOVE 'U'                TO WS-MIC003-RETURN-CODE         V20MB016
-043500         MOVE '1'                TO MIC003-BYTE-MAP-IND(039)      V20MB016
-043600         MOVE 912                TO MIC003-B039-ACTION-CODE       V20MB016
-043700         GO TO 9000-ERROR-ROUTINE.                                V20MB016
-043800*
-043900     IF  NOT-ON-US-TXN            ← patch inserted at 043902
+005710     SET  CP-FLAG-NTWK            TO TRUE.
+005780         IF (CP-FLAG-NTWK) AND …range match…
+005840             MOVE CP-SCHEME       TO WS-CARD-SCHEME
+005850             MOVE ZEROES          TO WS-CARD-ORG-NMBR
+005860                                     WS-CARD-TYPE-NMBR
+005910             SET NOT-ON-US-TXN    TO TRUE
+005920             SET WS-ON-PREFIX     TO TRUE
 ```
 
-The MBI payment is declined with action code **912** and control never reaches `043902`.
+So an **active `CP-FLAG-NTWK` (`'N'`) network-range record still covers this card range**.
+It is a separate PCIF entry from the two 45993903 `'T'` and `'R'` records — consistent with
+the evidence screen being `PAGE 002 OF 003` — and CIMB's status change did not touch it.
+The `'T'` and `'R'` records are skipped as in-active by `CIA-CPPFXA-NEXT-REC`
+(change `MCS00263`, filtering `INACTIVE-PREFIX-REC`, `CP-STATUS '8'` per `CPS148`), the
+network record then matches, and MIPYMT lands on the 111.
 
-### When the patch *does* fire
+> **Correction.** An earlier revision of this report claimed the patch was unreachable
+> because all three CPS948 legs would miss and fall to `CIA-QUAL-REJECT`, producing a 912.
+> That overlooked the active network-range record, which is not shown on the PCIF page in
+> the TS/IG. The observed 111 disproves it. No change is required to MMB00369's placement.
 
-Only when the BIN resolves ON-PREFIX but NOT-ON-US — i.e. matched on the `'N'` network leg,
-or matched on the type leg with `CP-SCHEME = 'D'` / `'E'` (`CPS948` `004102`-`004116`). Both
-require the prefix record to be **active**. That is the opposite of this change's premise.
+### Consequence for org/type — no action needed
 
-### Suggested remedy
+On the network leg CPS948 leaves `WS-CARD-ORG-NMBR` / `WS-CARD-TYPE-NMBR` at **zeroes**
+(`005850`-`005860`), and the patch does not force `001`/`114` the way CPD030 does. This is
+harmless, and the TS asymmetry is deliberate:
 
-Move the MMB00369 logic **above** the `WS-ON-PREFIX` gate — insert in the free range
-`043202`-`043298`, testing the BIN off `MIC003-B002-PAN-19` and branching to
-`B300-READ-CPSYS`, so it pre-empts both the `043300` and `043900` rejects.
-
-Do **not** fix this by changing `CPS948`. It is a shared CCC copybook; removing the
-`MCS00263` filter would change prefix resolution for every consumer and force a re-compile
-of the whole dependent list — which IG section 3.4 currently, and correctly, states as N/A.
-Keep the fix program-local to MIPYMT.
-
-> Caveat: `CPS948`/`CPS148` were read from the June 2026 MY snapshot. Confirm the production
-> MY level of `CPS948` still carries `MCS00263` before finalising. If it does not, this
-> blocker does not apply.
+- `WS-CARD-ORG-NMBR`, `WS-CARD-TYPE-NMBR` and `WS-CARD-SCHEME` appear **nowhere** in
+  MIPYMT — they are referenced only inside the CPS948 copybook. MIPYMT never consumes them.
+- MIPYMT keys the plastic read purely on the card number:
+  `103710 MOVE MIC003-B002-PAN-19 TO PLASTIC-CARD-NMBR`, then
+  `105500 MOVE PLASTIC-KEY TO CSCGIO-REC-KEY`. Org/type do not participate in the key.
+- CPD030 by contrast *does* consume `WS-OUTPUT-ORG`/`TYPE` into `CPS316-ORG`/`CPS316-TYPE`
+  at `168200`/`199200`, which is why it must force them.
 
 ---
 
 ## 5. Secondary observations
 
-**(a) Card-position guard is asymmetric.** CPD030 guards `(1:3) = '000'` before reading the
-BIN at `(4:8)`; MIPYMT does not guard `MIC003-B002-PAN-19(1:3)`. The 19-byte field holds a
-16-digit PAN right-aligned with three leading zeros — which is exactly why CPD030 checks it.
-For a genuine 19-digit PAN, `(4:8)` is not the BIN, so an unrelated card whose digits 4-11
-happen to be `45993903` would be forced on-us. Low likelihood, zero cost to close, and the
-two patches should read the same way.
+**(a) Card-position guard is asymmetric — minor.** CPD030 guards `(1:3) = '000'` before
+reading the BIN at `(4:8)`; MIPYMT does not guard `MIC003-B002-PAN-19(1:3)`. The 19-byte
+field holds a 16-digit PAN right-aligned with three leading zeros, which is why CPD030
+checks it. For a genuine 19-digit PAN, `(4:8)` is not the BIN, so an unrelated card whose
+digits 4-11 happen to be `45993903` would be forced on-us. Low likelihood, zero cost to
+close, and the two patches would then read the same way.
 
-**(b) MIPYMT forces no ORG/TYPE.** CPD030 moves `001`/`114` into `WS-OUTPUT-ORG` /
-`WS-OUTPUT-TYPE`. MIPYMT only does `SET ON-US-TXN TO TRUE`, leaving `WS-CARD-ORG-NMBR` /
-`WS-CARD-TYPE-NMBR` as CPS948 left them — `998`/`998` on the `CIA-QUAL-REJECT` path, zeroes
-on the network path. Neither is `001`/`114`. The patch matches the TS as written, so this is
-a **TS-level** gap rather than a patch defect; worth confirming with the author whether the
-online path needs the same org/type forcing the batch path gets.
-
-**(c) MIPYMT applies no TC filter.** CPD030 restricts the override to twelve transaction
+**(b) MIPYMT applies no TC filter.** CPD030 restricts the override to twelve transaction
 codes (`2004 2005 2012 2013 2017 2025 2201 2203 4201 4203 4204 6008`). MIPYMT applies it to
 every MBI payment for the BIN. Both patch banners say "POSTING FOR CERTIAN TC" [sic]. This
-may be deliberate — MIPYMT handles payments only — but it cannot be confirmed from the
-material supplied, because **the FS itself was not provided**; only its sign-off form was,
-and both TS section 2 and the requirements trace defer to "FS section 2".
+is plausibly deliberate — MIPYMT handles payments only, so the TC is implicit — but it
+cannot be confirmed from the material supplied, because **the FS itself was not provided**;
+only its sign-off form was, and TS section 2 defers to "FS section 2".
 
-**(d) `WS-ALLOW-ON-US-BIN` has no VALUE clause** in either patch. Every test site is
+**(c) `WS-ALLOW-ON-US-BIN` has no VALUE clause** in either patch. Every test site is
 immediately preceded by a `MOVE`, so this is correct as written — just note the field must
 never be tested without that MOVE.
 
@@ -228,8 +205,7 @@ never be tested without that MOVE.
    failure has no documented back-out.
 3. **TS and IG "Reviewer 2" approval blocks are blank** in both documents.
 4. **FS not supplied.** Only the sign-off form was provided, so requirement-level
-   verification (notably the TC list and the MIPYMT/CPD030 asymmetries in 5(b) and 5(c))
-   could not be completed.
+   verification (notably the TC list behind item 5(b)) could not be completed.
 
 **Correct as-is.** IG section 2.3 PCT/PPT = N/A (no new transaction or program definition);
 IG section 3.4 re-compile list = N/A (no copybook is modified — both patches are
@@ -243,9 +219,11 @@ batch CPD030 to Day 2 after the daily batch run.
 
 | # | Action | Owner | Severity |
 |---|---|---|---|
-| 1 | Re-position MMB00369 above the `043300` `WS-ON-PREFIX` gate; re-issue TS section 10.1.1.1 | Dev / TS author | **Blocker** |
-| 2 | Confirm production MY `CPS948` still carries the `MCS00263` in-active filter | Dev | **Blocker (pre-req)** |
-| 3 | Add CPD030 BTHLOD revert to IG section 8 | IG author | High |
-| 4 | Confirm from FS whether MIPYMT needs the TC filter and the 001/114 org/type forcing | BA / FS author | High |
-| 5 | Add `(1:3) = '000'` guard to MMB00369 for consistency with MCP00850 | Dev | Medium |
-| 6 | Fix TS section 1.1 scope text; obtain Reviewer 2 sign-off on TS and IG | TS/IG author | Low |
+| 1 | Add CPD030 BTHLOD revert to IG section 8 | IG author | High |
+| 2 | Confirm from FS whether MIPYMT is intended to be TC-filtered | BA / FS author | Medium |
+| 3 | Consider adding `(1:3) = '000'` guard to MMB00369 for consistency with MCP00850 | Dev | Low |
+| 4 | Fix TS section 1.1 scope text; obtain Reviewer 2 sign-off on TS and IG | TS/IG author | Low |
+
+**Regression test to keep.** Re-run the status-8 payment case after the patch: the same
+transaction that returns action code 111 pre-patch must post successfully post-patch. That
+single case exercises the whole MMB00369 path.
