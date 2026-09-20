@@ -61,3 +61,18 @@ TC-MINMAX-MIN-RATE / -MAX-RATE,Min/max rate table,Regulatory floor and ceiling a
 ABP-INTR-RATE-1 / ABP-INTR-ADJ-1,Account balance process record,"Rate in force at the time, for back-dated recalculation",Fraction,INT-20,CPD110B
 QMTMPT-GLOBAL-RATES,Merchant pricing table,"Scheme global rate, before the base rate is netted off",Percent (/100 in code),MDR-11,CP621690
 WS-BSE-RTE,Merchant pricing,Base rate netted off the global rate,Percent,MDR-11,CP621690
+LMTC-CAP-LMT,CCOM limit control table,Corporate cap limit,Amount,"CCOM-01, CCOM-02",KCC809
+LMTC-CAP-VAR,CCOM limit control table,Variance multiplier grossing up the cap limit,Multiplier,CCOM-01,KCC809
+LMTC-OSL-VAR,CCOM limit control table,Variance multiplier on outstanding-spend limits,Multiplier,"CCOM-03, CCOM-07",KCC809
+WS300-KC-OSL-CYC-LMT-DOM / -INTL,CCOM limit record,"Cycle outstanding-spend limit, domestic and international",Amount,CCOM-03,KCC809
+WS300-KC-OSL-CYC-CNT-DOM / -INTL,CCOM limit record,Cycle transaction count limit,Count,CCOM-04,KCC809
+LMTC-OSL-DLY-LMT-DOM / -INTL,CCOM limit control table,Daily outstanding-spend limit,Amount,CCOM-07,KCLAUIN
+LMTC-TXN-DOM / LMTC-TXN-INTL,CCOM limit control table,Single-transaction limit,Amount,CCOM-06,KCLAUIN
+LMTC-TXN-VAR,CCOM limit control table,Variance multiplier on the single-transaction limit,Multiplier,CCOM-06,KCLAUIN
+KCLMTR-CAP-LMT,CCOM limit record,Cap limit used as the utilisation denominator,Amount,CCOM-08,KCD140
+WS-CCY-XCHG-RTE,CCOM currency table,Rate converting a plastic's currency to the corporate base currency,Rate,"CCCY-01, CCCY-02",KCD136
+TCIV-COMB-RTLCSH-1RATE,Product control,Whether retail and cash are combined when choosing the rate band,Flag,MINT-03,CPOPCPO
+TCIV-SPLIT-RTLCSH-MULTIRATE,Product control,Whether the multi-rate ladder applies,Flag,MINT-05,CPOPCPO
+CM-CI-LIMIT-1 / CM-CI-LIMIT-2,Cardholder master,Band boundaries for the monthly interest method,Amount,"MINT-04, MINT-05, MINT-06",CPOPCPO
+CM-AGGR-CASH-DAYS,Cardholder master,"Accumulated days, the divisor for average daily balance",Days,MINT-02,CPOPCPO
+CXS120-BILLING-CCY-EXP,Scheme transaction record,"Billing currency exponent, separate from the transaction one",Exponent,FX-07,CXCV030

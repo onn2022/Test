@@ -72,6 +72,7 @@ DOMAINS = [
     ('Interchange / MDR / fees', r'\b(INTCHG|INTERCHANGE|MDR|DISCOUNT|DISC-RATE|COMM|MERCH-FEE|MSF)\w*'),
     ('Fees (annual/service/misc)',r'\b(FEE|ANNUAL|SVC-CHG|SERVICE-CHG|CHARGE)\w*'),
     ('Balances / ageing / cycle', r'\b(BAL|BALANCE|AGE|AGEING|AGING|BUCKET|CYCLE-TO-DATE|CTD|YTD|MTD|OUTSTAND)\w*'),
+    ('Corporate card limits (CCOM)', r'\b(KC\d|WS300-KC|LMTC-|OSL-|CAP-LMT|CAP-AVL|CYC-LMT|DLY-LMT|LMT-UTIL|CNT-UTIL|CORP-CARD)\w*'),
     ('Credit limit / exposure',  r'\b(LIMIT|LMT|EXPOSURE|AVAIL|OPEN-TO-BUY|OTB)\w*'),
     ('GL / provision / accounting', r'\b(GL-|GENERAL-LEDGER|PROVISION|PROVSN|WRITE-OFF|WRTOFF|CHARGE-OFF|RECOVER)\w*'),
     ('Merchant volume / settlement', r'\b(MERCH|VOLUME|VOL-|SUBMIT|DEPOSIT|SETLMT|NET-DEP)\w*'),

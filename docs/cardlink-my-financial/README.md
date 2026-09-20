@@ -14,11 +14,11 @@ single, simplified Excel reference: `Cardlink_MY_Financial_Computations.xlsx`.
 | Sheet | Contents |
 | --- | --- |
 | Read Me | Purpose, source, method, scope and limitations |
-| Financial Formulas | 149 computations: plain-English rule, COBOL as written, program / paragraph / line |
+| Financial Formulas | 177 computations: plain-English rule, COBOL as written, program / paragraph / line |
 | Summary | Counts by domain, for the catalogue and for the raw scan |
 | Parameters & Rates | 43 control-table and master-file fields that drive the formulas |
-| Programs | The 58 programs read in full (394,000 lines), with role and statement counts |
-| Arithmetic Detail | All 31,270 arithmetic statements extracted from those 58 programs |
+| Programs | The 72 programs read in full (445,498 lines), with role and statement counts |
+| Arithmetic Detail | All 33,313 arithmetic statements extracted from those 72 programs |
 | MY Scan Coverage | All 4,667 MY members containing arithmetic, for coverage assessment |
 
 ## Method
@@ -33,8 +33,8 @@ single, simplified Excel reference: `Cardlink_MY_Financial_Computations.xlsx`.
 
 ## Limitations
 
-- The 58 programs read in full hold 59.5% of the monetary arithmetic in the MY repository
-  (17,410 of 29,239 keyword-bearing statements). Remaining members are inventoried but were
+- The 72 programs read in full hold 63.2% of the monetary arithmetic in the MY repository
+  (18,486 of 29,239 keyword-bearing statements). Remaining members are inventoried but were
   not read line by line.
 - Copybooks were not expanded; arithmetic in a copybook is attributed to the copybook.
 - Branches were read, not executed. Which formula fires for a given account depends on product
@@ -57,6 +57,7 @@ tools/extract.py        # parse the downloaded members, classify each statement
 tools/catalogue.py      # the simplified computations, with source anchors
 tools/catalogue_add.py  # second tranche, from 22 additional programs
 tools/catalogue_add2.py # third tranche, from 16 further programs
+tools/catalogue_add3.py # fourth tranche, Corporate Card Module and scheme gaps
 tools/build_xlsx.py     # assemble the workbook
 ```
 
@@ -64,9 +65,9 @@ tools/build_xlsx.py     # assemble the workbook
 
 ## Verification
 
-- Every one of the 149 catalogue entries was re-checked against the program, paragraph and line
-  it cites; all 149 resolve, and every one points at live, non-commented source.
-- The workbook contains 28 formulas (`COUNTIF` and `SUM` only). `scripts/recalc.py` could not be
+- Every one of the 177 catalogue entries was re-checked against the program, paragraph and line
+  it cites; all 177 resolve, and every one points at live, non-commented source.
+- The workbook contains 30 formulas (`COUNTIF` and `SUM` only). `scripts/recalc.py` could not be
   used because LibreOffice does not function in the build container — it times out even on a
   three-cell workbook. The formula ranges and their expected results were instead verified
   directly against the source data, and `fullCalcOnLoad` is set so Excel recalculates on open.
