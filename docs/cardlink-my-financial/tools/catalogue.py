@@ -125,23 +125,23 @@ CATALOGUE = [
 ("CAF-02","Cash advance fee","Single-rate fee (no band limit)",
  "Where the table row has no limit, the fee is simply a percentage of the advance.",
  "COMPUTE WS-CA-PERCENT-CHARGE ROUNDED =\n  (CMT-AMNT * TC-CA-PER-RATE-1 (ICAP)) / 100",
- "CPD110","CAPC-NO-LIMIT",28853,"TC-CA-PER-RATE-1",
+ "CPD110","CAPC-NO-LIMIT",28850,"TC-CA-PER-RATE-1",
  "Divide by 100 because the table holds the rate as a percentage, not a fraction."),
 
 ("CAF-03","Cash advance fee","Banded fee — amount within the limit",
  "If the advance is not above the band limit, rate 1 applies to the whole amount.",
  "IF CMT-AMNT NOT > TC-CA-PER-LIMIT (ICAP)\n  COMPUTE WS-CA-PERCENT-CHARGE ROUNDED =\n    (CMT-AMNT * TC-CA-PER-RATE-1 (ICAP)) / 100",
- "CPD110","CAPC-TWO-RATES",28859,"TC-CA-PER-LIMIT, TC-CA-PER-RATE-1",""),
+ "CPD110","CAPC-TWO-RATES",28855,"TC-CA-PER-LIMIT, TC-CA-PER-RATE-1",""),
 
 ("CAF-04","Cash advance fee","Banded fee — amount above the limit",
  "Above the limit the fee is split: rate 1 on the limit, rate 2 on the excess.",
  "COMPUTE WS-CA-AMNT-OVER-LIMIT = CMT-AMNT - TC-CA-PER-LIMIT (ICAP)\nCOMPUTE WS-CA-PERCENT-CHARGE ROUNDED =\n  ((TC-CA-PER-LIMIT (ICAP) * TC-CA-PER-RATE-1 (ICAP))\n   + (WS-CA-AMNT-OVER-LIMIT * TC-CA-PER-RATE-2 (ICAP))) / 100",
- "CPD110","CAPC-TWO-RATES",28864,"TC-CA-PER-LIMIT, TC-CA-PER-RATE-1, TC-CA-PER-RATE-2",""),
+ "CPD110","CAPC-TWO-RATES",28858,"TC-CA-PER-LIMIT, TC-CA-PER-RATE-1, TC-CA-PER-RATE-2",""),
 
 ("CAF-05","Cash advance fee","Floor and cap the fee",
  "The computed fee is raised to the minimum charge, or cut to the maximum charge.",
  "IF WS-CA-PERCENT-CHARGE < TC-CA-PERCENT-MIN-CHRG\n  MOVE TC-CA-PERCENT-MIN-CHRG TO WS-CA-PERCENT-CHARGE\nIF WS-CA-PERCENT-CHARGE > TC-CA-PERCENT-MAX-CHRG\n  MOVE TC-CA-PERCENT-MAX-CHRG TO WS-CA-PERCENT-CHARGE",
- "CPD110","CAPC-MIN-MAX",28873,"TC-CA-PERCENT-MIN-CHRG, TC-CA-PERCENT-MAX-CHRG",
+ "CPD110","CAPC-MIN-MAX",28866,"TC-CA-PERCENT-MIN-CHRG, TC-CA-PERCENT-MAX-CHRG",
  "This is the classic 'x% of the advance, minimum RMn' rule."),
 
 ("CAF-06","Cash advance fee","Raise the fee transaction",
@@ -497,11 +497,14 @@ CATALOGUE = [
  "CXCV010","CCKC0-FMT-TC33-RE-CB-TCR1",10188,"WS-DST-CCY-EXP",
  "Handles currencies with 0, 2 or 3 decimal places from one wire format."),
 
-("FX-02","Currency conversion","Currency rate table",
- "Conversion rates are read from the currency rate table file rather than computed.",
- "SELECT CURRENCY-RATE-TABLE-FILE ASSIGN TO SYS004-CPRTB\n  ACCESS IS DYNAMIC",
- "CPD030","FILE-CONTROL",30,"SYS004-CPRTB",
- "Rate maintenance is a data change, not a code change."),
+("FX-02","Currency conversion","Visa conversion rate is read, not computed",
+ "The Visa rate is read once from the VISRATE file at the start of the run and held for the whole job. "
+ "An empty file is fatal — the program abends rather than convert at a wrong rate.",
+ "OBTAIN-VISA-CURRENCY-RATE.\n  OPEN INPUT VMC-CURRENCY-RATE-FILE\n  READ VMC-CURRENCY-RATE-FILE\n    AT END MOVE 88888 TO WS-ABEND-CODE\n           MOVE 'VISRATE FILE IS EMPTY' TO WS-ABENDMSG\n           PERFORM ZZZZ-ABEND\n  MOVE VMC-VISA-RATE TO WS-VISA-RATE\n  CLOSE VMC-CURRENCY-RATE-FILE",
+ "CSM08","OBTAIN-VISA-CURRENCY-RATE",2142,"VMC-VISA-RATE, VMC-SCALE-FACTOR",
+ "Rate maintenance is a data change, not a code change. NOTE: the older CPRTB currency-rate-table "
+ "path (WS-IN-ORG-RATE = CPRTB-INCOM-RATE / 10**exponent, and cash fee rate = rate * 0.99) is "
+ "commented out in CALC-CURR-CONV-RATE and in CPD030 - do not mistake it for live logic."),
 
 # ---------------- N. Instalment ----------------
 ("INS-01","Instalment / fixed-term loan","Months on which interest is payable",
