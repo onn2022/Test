@@ -63,7 +63,7 @@ rows = [
       'It is intended for impact analysis, UAT design, audit and onboarding.'),
  ('', ''),
  ('HOW TO USE THIS WORKBOOK', ''),
- ('Financial Formulas', 'The main deliverable — 98 computations, each with a plain-English rule and the source COBOL. Start here.'),
+ ('Financial Formulas', 'The main deliverable — 130 computations, each with a plain-English rule and the source COBOL. Start here.'),
  ('Summary', 'Counts by domain, for both the simplified catalogue and the raw scan.'),
  ('Parameters & Rates', 'The table and master-file fields that drive the formulas. These are the levers: change a rate here, not in code.'),
  ('Programs', 'What each analysed program does.'),
@@ -77,8 +77,8 @@ rows = [
  ('Members containing arithmetic', '4,667'),
  ('Arithmetic statements repository-wide', '86,996'),
  ('Statements with a monetary keyword', '29,239 across 1,359 members'),
- ('Programs read in full for this study', '20 (listed on the Programs tab) — 2,600,000+ lines of COBOL'),
- ('Statements extracted from those 20', '21,738, of which 11,964 carry a monetary keyword'),
+ ('Programs read in full for this study', '42 (listed on the Programs tab) — 319,178 lines of COBOL'),
+ ('Statements extracted from those 42', '27,919, of which 15,757 carry a monetary keyword'),
  ('', ''),
  ('METHOD', ''),
  ('1. Locate', 'The repository-wide scan ranked members by the number of arithmetic statements carrying monetary keywords.'),
@@ -90,7 +90,7 @@ rows = [
  ('', ''),
  ('SCOPE AND LIMITATIONS', ''),
  ('Read this before relying on the workbook', ''),
- ('Coverage', 'The 20 programs read in full hold roughly half of all monetary-keyword arithmetic in the MY repository. '
+ ('Coverage', 'The 42 programs read in full hold 53.9% of all monetary-keyword arithmetic in the MY repository (15,756 of 29,239). '
               'The remaining members are inventoried on the MY Scan Coverage tab but were not read line by line. '
               'Low-volume members may contain formulas not represented here.'),
  ('No COPY expansion', 'Copybooks were not expanded. Arithmetic inside a copybook is attributed to the copybook, not to every program that includes it.'),
@@ -100,7 +100,7 @@ rows = [
                         'their current values must come from the production tables.'),
  ('Commented-out code', 'Lines commented out in the source were excluded. Several interest paragraphs carry commented history '
                         '(marked XXX or ***) showing superseded logic; the live path is what is documented.'),
- ('Verification', 'Every one of the 98 catalogue entries was checked back against the cited program, paragraph and line. '
+ ('Verification', 'Every one of the 130 catalogue entries was checked back against the cited program, paragraph and line. '
                   'Line numbers are physical line numbers in the snapshot member, not COBOL sequence numbers.'),
  ('', ''),
  ('Prepared', 'Generated 20 September 2026'),
@@ -171,7 +171,7 @@ body(ws, 5, tot, 3, wrap_cols=(1,3))
 for c in range(1, 4):
     cell = ws.cell(row=tot, column=c); cell.font = Font(name=FONT, bold=True, size=9); cell.fill = SUBFIL
 
-ws.cell(row=tot+2, column=1, value='Raw scan — arithmetic statements extracted from the 20 programs read in full')
+ws.cell(row=tot+2, column=1, value='Raw scan — arithmetic statements extracted from the 42 programs read in full')
 ws.cell(row=tot+2, column=1).font = Font(name=FONT, bold=True, size=11, color=NAVY)
 ws.cell(row=tot+3, column=1, value='Classified domain'); ws.cell(row=tot+3, column=2, value='Statements')
 ws.cell(row=tot+3, column=3, value='Of which COMPUTE / MULTIPLY / DIVIDE')
@@ -196,7 +196,7 @@ ws.cell(row=n, column=1, value='Note')
 ws.cell(row=n, column=1).font = Font(name=FONT, bold=True, size=9)
 ws.cell(row=n, column=2, value=('The two tables count different things. The upper table counts distinct business rules written up in this workbook. '
     'The lower table counts individual COBOL statements, most of which are accumulators repeating the same rule — which is why '
-    'roughly 12,000 statements reduce to 98 rules. "Other / aggregation" is running totals, subtotals and averages carrying a '
+    'roughly 15,800 statements reduce to 130 rules. "Other / aggregation" is running totals, subtotals and averages carrying a '
     'monetary keyword but expressing no distinct pricing rule.'))
 ws.cell(row=n, column=2).alignment = Alignment(wrap_text=True, vertical='top')
 ws.cell(row=n, column=2).font = Font(name=FONT, size=9)
@@ -263,7 +263,7 @@ ws.sheet_view.showGridLines = False
 
 # ------------------------------------------------- 6. Arithmetic Detail
 ws = wb.create_sheet('Arithmetic Detail')
-ws['A1'] = 'Every arithmetic statement extracted from the 20 programs read in full'
+ws['A1'] = 'Every arithmetic statement extracted from the 42 programs read in full'
 ws['A1'].font = Font(name=FONT, bold=True, size=14, color=NAVY)
 ws['A2'] = ('Evidence base. "Monetary" flags statements whose operands carry a money keyword. '
             'Filter on Domain or Program to trace a rule back to source.')
@@ -289,7 +289,7 @@ ws.sheet_view.showGridLines = False
 ws = wb.create_sheet('MY Scan Coverage')
 ws['A1'] = 'Repository-wide inventory — every MY member containing arithmetic'
 ws['A1'].font = Font(name=FONT, bold=True, size=14, color=NAVY)
-ws['A2'] = ('All 4,667 members in the 19-Sep-2026 MY snapshot that contain arithmetic. "Read in full" marks the 20 analysed here. '
+ws['A2'] = ('All 4,667 members in the 19-Sep-2026 MY snapshot that contain arithmetic. "Read in full" marks the 42 analysed here. '
             'Use this to judge coverage and to pick the next members to document.')
 ws['A2'].font = Font(name=FONT, size=9, italic=True, color='595959')
 ws.append([]); ws.append(['Member','Path','Lines','Arithmetic statements','With monetary keyword','COMPUTE','MULTIPLY','DIVIDE','ADD / SUBTRACT','Read in full'])

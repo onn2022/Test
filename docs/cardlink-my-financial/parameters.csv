@@ -1,0 +1,55 @@
+Field,Held in,What it controls,Unit,Used by,Program
+TCM-CASH-LIMIT-PERCENT,Product (TCM) table,Share of the credit limit available as cash,Fraction,LMT-01,CPD110
+TCM-INSTL-LIMIT-PERCENT,Product (TCM) table,Share of the credit limit available for instalments,Fraction,LMT-02,CPD110
+TCM-OVER-LIMIT,Product (TCM) table,Multiplier giving the permitted over-limit tolerance,Multiplier (e.g. 1.10),"LMT-03, LMT-04",CPD110
+TCM-LATE-CHARGE,Product (TCM) table,Flat late charge,Amount,"LATE-03, LATE-04, LATE-05",CPD110
+TCM-LC-PERCENT,Product (TCM) table,Late charge as a percentage of unpaid balance,Fraction,"LATE-03, LATE-05",CPD110
+TCF-LATE-CHARGE-FLAG,Product control,"Selects which late-charge formula applies (0/5 flat, 2 flat+percent)",Code,"LATE-03, LATE-04",CPD110
+TCM-MINIMUM-PYMT,Product (TCM) table,Floor under the computed minimum payment,Amount,MIN-10,CPD110
+TCM-PYMT-THRESHOLD,Product (TCM) table,Balance below which the minimum floor is not applied,Amount,MIN-10,CPD110
+TCM-PAYMENT-TERM,Product (TCM) table,Divisor or percentage used on the revolving balance,Number,"MIN-06, MIN-07, MIN-09",CPD110
+TCM-DERIVE-METHOD,Product (TCM) table,"0 = divide by term, non-zero = multiply by term as a percentage",Code,"MIN-06, MIN-07",CPD110
+TCP-PERCENT (ITCP),Fixed-payment table,Percentage of principal used to set the fixed payment,Fraction,MIN-03,CPD110
+TCM-BONUS-PERCENT,Product (TCM) table,Bonus points earned per unit of net qualifying spend,Fraction,RWD-01,CPD110
+TC-CA-PER-SRCE (ICAP),Cash advance fee table,Transaction source code the fee row applies to,Code,CAF-01,CPD110
+TC-CA-PER-LIMIT (ICAP),Cash advance fee table,Band limit splitting rate 1 from rate 2,Amount,"CAF-03, CAF-04",CPD110
+TC-CA-PER-RATE-1 (ICAP),Cash advance fee table,First-band cash advance fee rate,Percent (/100 in code),"CAF-02, CAF-03, CAF-04",CPD110
+TC-CA-PER-RATE-2 (ICAP),Cash advance fee table,Rate applied above the band limit,Percent (/100 in code),CAF-04,CPD110
+TC-CA-PERCENT-MIN-CHRG,Cash advance fee table,Minimum cash advance fee,Amount,CAF-05,CPD110
+TC-CA-PERCENT-MAX-CHRG,Cash advance fee table,Maximum cash advance fee,Amount,CAF-05,CPD110
+TCSC-LIMIT (ISC),Service charge table,Free / first-band transaction count,Count,SVC-01,CPD110
+TCSC-RATE-1 (ISC),Service charge table,Charge per transaction in the first band,Amount,"SVC-01, SVC-02",CPD110
+TCSC-RATE-2 (ISC),Service charge table,Charge per transaction above the band,Amount,SVC-01,CPD110
+TCSC-MAXIMUM,Service charge table,Cap on total service charges,Amount,SVC-04,CPD110
+TSC-RETAIL (ISC),Service charge table,Whether the charge posts to retail or cash,Flag,SVC-03,CPD110
+CM-CI-RATE-1/2/3,Cardholder master,Cash interest rate per band,Fraction,"INT-03..INT-06, INT-13",CPD110
+CM-CI-ADJ-1/2/3,Cardholder master,Account-level adjustment to the cash rate,Fraction,INT-13,CPD110
+CM-RI-RATE-1/2/3,Cardholder master,Retail interest rate per band,Fraction,INT-03..INT-06,CPD110
+CM-RI-ADJ-1/2/3,Cardholder master,Account-level adjustment to the retail rate,Fraction,INT-13,CPD110
+WSI-LIMIT-1 / WSI-LIMIT-2,Working (from rate table),Band boundaries for tiered interest,Amount,"INT-04, INT-05",CPD110
+YEAR-BASE-360 / 365 / 366,Product control,Day-count basis for interest,Flag,INT-01,CPD110
+TCICB-RATE-1 / TCICB-RATE-2,Credit balance interest table,"Rate paid on credit balances, by band",Fraction,INT-16,CPD110
+TCICB-LIMIT-2 / TCICB-LIMIT-3,Credit balance interest table,"Band boundary, and cap on the credit balance that earns interest",Amount,INT-16,CPD110
+FREEZE-INTEREST (IBC),Bank control,Suppresses all interest accrual,Flag,INT-12,CPD110
+CASH-INTR-FREE / RETAIL-INTR-FREE,Cardholder master,Grace / interest-free status per bucket,Flag,INT-11,CPD110
+TC-WAIVE-LATE-CHRG (IBC),Bank control,Waives late charges,Flag,LATE-02,CPD110
+TC-INSTL-EM-AVL-PER,Product control,Share of instalment balance reserved from available credit,Fraction,"LMT-06, INS-05",CPD110
+CQBDTE-T-GST-RTE,Merchant transaction record,GST rate carried on the transaction,Percent (/100 in code),TAX-01,CQD720
+OCMDM-PCT-UNDER-BASE-RATE,Organisation merchant table,Volume concession off the base discount rate,Fraction,MDR-02,CPM320
+OCM-VISA-INTCHG-RATE,Organisation control,Visa interchange rate held for maintenance,Fraction,ICG-05,CPU600
+WS-ICG-RTL-PGM-ITEM / -RATE,Interchange table,Per-item fee and ad-valorem rate by region and programme,Amount / fraction,ICG-01,CPD030
+WS-DST-CCY-EXP,Currency table,Destination currency decimal exponent,Exponent,"FX-01, RWD-03",CXCV010
+CMA-FTL-REPAYMENT-TERM,Fixed-term loan record,Loan repayment term in months,Months,INS-01,CPD110
+CMA-FTL-INT-FREE-PERIOD,Fixed-term loan record,Interest-free months at the start of the loan,Months,INS-01,CPD110
+CMA-FTL-INS-PREMIUM,Fixed-term loan record,Insurance premium financed with the loan,Amount,INS-02,CPD110
+EPT-PAY-TERM,EPP plan record,Number of monthly instalments,Months,EPP-01,EPD001
+EPT-ITEM-PRICE,EPP plan record,Financed item price,Amount,EPP-01,EPD001
+EPT-INTR-FREE-MOS,EPP plan record,Interest-free months at the start of the plan,Months,EPP-03,EPD001
+EPT-MON-INSTL-AMT,EPP plan record,Standard monthly instalment,Amount,EPP-03,EPD001
+EPT-FIRST-PAY-AMT,EPP plan record,"First instalment, where it differs from the rest",Amount,EPP-03,EPD001
+EPT-WAIVE-FR-MOS / -TO-MOS,EPP plan record,"Waiver window, inclusive of both months",Months,EPP-02,EPD001
+CSNGL-GL-POST-CURR-EXP,GL interface record,Posting currency decimal exponent,Exponent,GL-07,CP615100
+CXS120-TXN-CCY-EXP,Scheme transaction record,Transaction currency decimal exponent,Exponent,FX-04,CXPI040
+WSCPS-MAINT-FIELD-NUMERIC-R,Mass maintenance request,Percentage or absolute change to apply,Percent or amount,"MNT-01, MNT-02, MNT-03",CPU601
+SEC-TC-INSTL-EM-AVL-PER,Authorisation control,Instalment reserve percentage used at authorisation,Fraction,AUT-01,AUS301V
+(hard-coded) 0.0100,CP621660 source,"Cash rebate rate — held in code, not in a table",Fraction,RWD-05,CP621660

@@ -631,3 +631,9 @@ PROGRAMS = [
  ("CXRC020","Batch","Scheme reconciliation processing."),
  ("QMR123","Batch","Acquirer module batch reporting."),
 ]
+
+# --- second tranche (22 additional programs) -------------------------------
+from catalogue_add import CATALOGUE_2, PROGRAMS_2, PARAMETERS_2
+CATALOGUE  = CATALOGUE  + CATALOGUE_2
+PROGRAMS   = sorted(PROGRAMS + PROGRAMS_2)
+PARAMETERS = PARAMETERS + PARAMETERS_2

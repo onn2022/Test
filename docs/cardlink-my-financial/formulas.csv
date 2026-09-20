@@ -1,0 +1,313 @@
+ID,Domain,What it computes,Rule in plain English,COBOL as written,Program,Paragraph,Line,Driver fields,Notes
+INT-01,Interest — finance charge,Daily interest fraction (day factor),"An annual rate is turned into a daily one. The divisor depends on the year basis set for the product: 360, 365, or 366 in a leap year.","IF YEAR-BASE-360  MOVE .0027778 TO WSI-DAY-FACTOR
+IF YEAR-BASE-365  MOVE .0027397 TO WSI-DAY-FACTOR
+IF YEAR-BASE-366  MOVE .0027322 (leap) / .0027397 TO WSI-DAY-FACTOR",CPD110,COMPUTE-DAY-FACTOR,13209,YEAR-BASE-360 / 365 / 366,".0027778 = 1/360, .0027397 = 1/365, .0027322 = 1/366. Leap year is tested from OC-TODAYS-JULIAN."
+INT-02,Interest — finance charge,Number of days to accrue,Days between the date interest was last accrued through and the new accrue-through date.,"MOVE CM-DTE-ACCR-THRU TO WS-DTE-DATE-2
+MOVE WS-ACCR-THRU-DTE TO WS-DTE-DATE-1
+PERFORM ZZZZ-ELAPSED-DAYS -> WS-DTE-RESULT
+MOVE WS-DTE-RESULT TO WSI-DAYS",CPD110,PROCESS-INTEREST-RATE,11600,"CM-DTE-ACCR-THRU, WS-ACCR-THRU-DTE",Drives every accrual below. CM-DTE-LST-ACCR keeps the previous value for audit.
+INT-03,Interest — finance charge,One day's interest — single rate,Balance x annual rate x daily fraction. This is the base case when the product has no rate bands.,COMPUTE WSI-ACCRUAL ROUNDED = WSI-AMNT * WSI-RATE-1 * WSI-DAY-FACTOR,CPD110,INTEREST-PROCESSING,13982,"WSI-AMNT, WSI-RATE-1, WSI-DAY-FACTOR",WSI-AMNT is the interest-bearing balance for the bucket being processed (cash or retail).
+INT-04,Interest — finance charge,One day's interest — two rate bands,The balance up to the first limit is charged at rate 1; everything above it at rate 2.,"COMPUTE WSI-ACCRUAL ROUNDED =
+  (WSI-LIMIT-1 * WSI-RATE-1
+   + (WSI-AMNT - WSI-LIMIT-1) * WSI-RATE-2) * WSI-DAY-FACTOR",CPD110,INTEREST-PROCESSING,13989,"WSI-LIMIT-1, WSI-RATE-1, WSI-RATE-2",Tiered pricing. Applied when the balance exceeds WSI-LIMIT-1 but not WSI-LIMIT-2.
+INT-05,Interest — finance charge,One day's interest — three rate bands,"Band 1 up to limit 1 at rate 1, band 2 between the two limits at rate 2, the remainder at rate 3.","COMPUTE WSI-ACCRUAL ROUNDED =
+  (WSI-LIMIT-1 * WSI-RATE-1
+   + (WSI-LIMIT-2 - WSI-LIMIT-1) * WSI-RATE-2
+   + (WSI-AMNT - WSI-LIMIT-2) * WSI-RATE-3) * WSI-DAY-FACTOR",CPD110,INTEREST-PROCESSING,13993,"WSI-LIMIT-1, WSI-LIMIT-2, WSI-RATE-1/2/3",Full three-tier ladder — the most general interest shape in the MY portfolio.
+INT-06,Interest — finance charge,One day's interest — flat top rate,"Whole balance charged at rate 3, used where the product prices everything at the top band.",COMPUTE WSI-ACCRUAL ROUNDED = WSI-AMNT * WSI-RATE-3 * WSI-DAY-FACTOR,CPD110,INTEREST-PROCESSING,14003,"WSI-AMNT, WSI-RATE-3",Terminal branch of the banding logic.
+INT-07,Interest — finance charge,Scale one day's interest to the period,One day's interest multiplied by the number of days since the last accrual.,"MULTIPLY WSI-DAYS BY WSI-ACCRUAL
+(also: COMPUTE WSI-ACCRUAL ROUNDED = WSI-ACCRUAL * WSI-DAYS)",CPD110,INTEREST-PROCESSING,12472,WSI-DAYS,Simple (not compound) interest: the per-diem is not re-based within the period.
+INT-08,Interest — finance charge,Total across bands,The three band accruals are added into one figure for the bucket.,COMPUTE WSI-ACCRUAL = WSI-ACCRUAL-1 + WSI-ACCRUAL-2 + WSI-ACCRUAL-3,CPD110,INTEREST-PROCESSING,13960,WSI-ACCRUAL-1/2/3,
+INT-09,Interest — finance charge,Post accrual to the cash bucket,Accrued cash interest is added to the account's cash interest bucket and to the daily interest-accrual record.,"ADD WSI-ACCRUAL TO CM-CASH-ACCRUED-INTR
+ADD WSI-ACCRUAL TO INTM-INTACR-CSH-ACCRUED-TODAY",CPD110,INTEREST-PROCESSING,12486,CM-CASH-ACCRUED-INTR,Cash and retail interest are accrued and held separately all the way to statement.
+INT-10,Interest — finance charge,Post accrual to the retail bucket,Accrued retail interest is added to the account's retail interest bucket.,"ADD WSI-ACCRUAL TO CM-RTL-ACCRUED-INTR
+ADD WSI-ACCRUAL TO INTM-INTACR-RTL-ACCRUED-TODAY",CPD110,INTEREST-PROCESSING,12738,CM-RTL-ACCRUED-INTR,
+INT-11,Interest — finance charge,Which buckets accrue at all,Cash interest is calculated only when the cash balance is positive and the account is not cash-interest-free; the same test applies to retail.,"IF CASH-INTR-FREE AND CASH2-INTR-FREE  NEXT SENTENCE
+ELSE IF CM-CASH-BALANCE > ZERO  PERFORM COMPUTE-CASH-INTEREST
+IF RETAIL-INTR-FREE AND RETAIL2/3-INTR-FREE  NEXT SENTENCE
+ELSE IF CM-RTL-BALANCE > ZERO  PERFORM COMPUTE-RETAIL-INTEREST",CPD110,COMPUTE-INTEREST-ACCRUAL,12226,"CASH-INTR-FREE, RETAIL-INTR-FREE","Interest-free (grace) status is per sub-bucket, not per account."
+INT-12,Interest — finance charge,Whole-account interest freeze,"If the account is frozen for interest, or every bucket is interest-free, accrual is skipped entirely for the day.","IF FREEZE-INTEREST (IBC) OR (CASH-INTR-FREE AND CASH2-INTR-FREE AND
+   RETAIL-INTR-FREE AND RETAIL2-INTR-FREE AND RETAIL3-INTR-FREE)
+   PERFORM UPDATE-ACCT-ANTICIPATE-DATE ... GO TO PIR-XIT-1",CPD110,PROCESS-INTEREST-RATE,11618,FREEZE-INTEREST (IBC),"The accrue-through date still rolls forward, so no days are double-counted later."
+INT-13,Interest — finance charge,Effective rate = base + adjustment,The rate actually applied is the product rate plus any account-level adjustment; x100 turns it into a displayable percentage.,"COMPUTE WSM-CBC-RATE ROUNDED = (CM-CI-RATE-1 + CM-CI-ADJ-1) * 100
+COMPUTE WSM-CAC-RATE ROUNDED = CM-CI-RATE-2 * 100",CPD110,INTEREST-PROCESSING,11686,"CM-CI-RATE-1..3, CM-CI-ADJ-1..3, CM-RI-RATE-1..3, CM-RI-ADJ-1..3","CI- = cash interest, RI- = retail interest. Rates are held as decimal fractions."
+INT-14,Interest — finance charge,Total accrued interest on the account,All five interest buckets added together for reporting and for the available-credit reduction.,"COMPUTE WS-WORK-ACCRUED-INT = CM-RTL-ACCRUED-INTR + CM-RTL2-ACCRUED-INTR
+  + CM-RTL3-ACCRUED-INTR + CM-CASH-ACCRUED-INTR + CM-CASH2-ACCRUED-INTR",CPD110,CARDHOLDER-PROCESSING,5712,CM-RTL/CASH-ACCRUED-INTR,
+INT-15,Interest — finance charge,Average daily balance accumulator,Balance multiplied by days is accumulated each cycle; dividing the total by the accumulated days gives the average daily balance.,"COMPUTE CM-AGGR-YTD-BALANCE = CM-AGGR-YTD-BALANCE
+  + ((CM-CASH-BALANCE + CM-RTL-BALANCE) * WSI-DAYS)
+ADD WSI-DAYS TO CM-AGGR-YTD-DAYS",CPD110,PROCESS-INTEREST-RATE,11615,"CM-AGGR-YTD-BALANCE, CM-AGGR-YTD-DAYS","Parallel cash-only and retail-only counters exist (CM-AGGR-CASH-DAYS, CM-AGGR-RTL-DAYS)."
+INT-16,Interest — finance charge,Interest earned on a credit balance,"When the account is in credit, interest is paid to the customer: balance x credit rate x daily fraction x days. The balance is first capped at limit 3, then rate 1 or rate 2 applies depending on whether it is below limit 2.","IF WSI-AMNT > TCICB-LIMIT-3  MOVE TCICB-LIMIT-3 TO WSI-AMNT
+IF WSI-AMNT < TCICB-LIMIT-2
+  COMPUTE CM-IE-ACCRUED ROUNDED =
+    WSI-AMNT * TCICB-RATE-1 * WSI-DAY-FACTOR * CM-IE-AGGR-DAYS
+ELSE
+  COMPUTE CM-IE-ACCRUED ROUNDED =
+    WSI-AMNT * TCICB-RATE-2 * WSI-DAY-FACTOR * CM-IE-AGGR-DAYS",CPD110,STATEMENT-PREPARATION,15489,"TCICB-RATE-1/2, TCICB-LIMIT-2/3, CM-IE-AGGR-DAYS",TCICB = interest on credit balance. The cap at limit 3 means credit interest is not paid on very large credit balances.
+INT-17,Interest — finance charge,Reverse accrued interest (waiver / early settlement),An accrual already taken is subtracted back out of the bucket and out of the daily accrual record.,"SUBTRACT WSI-ACCRUAL FROM CM-CASH-ACCRUED-INTR
+SUBTRACT WSI-ACCRUAL FROM CM-RTL-ACCRUED-INTR",CPD110,TRANSACTION-PROCESSING,9561,WSI-ACCRUAL,"Used when a payment back-dates into the accrual period, or interest is waived."
+INT-18,Interest — finance charge,Anticipated interest net of negative anticipation,"Retail interest expected to be billed, less interest already anticipated in the other direction.",COMPUTE WSI-ACCRUAL-RTL = CM-RTL-ACCRUED-INTR - CM-RTL-NEG-ANTICI-INTR,CPD110,TRANSACTION-PROCESSING,9610,CM-RTL-NEG-ANTICI-INTR,Source comment notes negative anticipated balances became redundant from V2R1 onward.
+INT-19,Interest — finance charge,Back-dated transaction interest,Interest on a single back-dated transaction: its amount x rate x daily fraction.,COMPUTE WSI-ACCRUAL ROUNDED = CMT-AMNT * WSI-RATE * WSI-DAY-FACTOR,CPD110,INTEREST-PROCESSING,14655,"CMT-AMNT, WSI-RATE",
+CAF-01,Cash advance fee,Pick the fee rate row,The cash-advance fee table is searched on the transaction's source code. ATM network names map to fixed source codes.,"MOVE CMT-SOURCE-CODE TO WS-SOURCE-CODE  (or CMT-ORIG-SOURCE-CODE if transferred)
+IF WS-SHORT-DESC = 'CIRRUS'  MOVE +0015 TO WS-SOURCE-CODE
+IF WS-SHORT-DESC = 'PLUS  '  MOVE +0014 TO WS-SOURCE-CODE
+SEARCH TC-CA-PER-TABLE WHEN TC-CA-PER-SRCE (ICAP) = WS-SOURCE-CODE",CPD110,CASH-ADV-PERCENT-CHARGE,28825,"TC-CA-PER-SRCE, CMT-SOURCE-CODE",No matching row means no percentage fee is raised (AT END GO TO CAPC-EXIT).
+CAF-02,Cash advance fee,Single-rate fee (no band limit),"Where the table row has no limit, the fee is simply a percentage of the advance.","COMPUTE WS-CA-PERCENT-CHARGE ROUNDED =
+  (CMT-AMNT * TC-CA-PER-RATE-1 (ICAP)) / 100",CPD110,CAPC-NO-LIMIT,28853,TC-CA-PER-RATE-1,"Divide by 100 because the table holds the rate as a percentage, not a fraction."
+CAF-03,Cash advance fee,Banded fee — amount within the limit,"If the advance is not above the band limit, rate 1 applies to the whole amount.","IF CMT-AMNT NOT > TC-CA-PER-LIMIT (ICAP)
+  COMPUTE WS-CA-PERCENT-CHARGE ROUNDED =
+    (CMT-AMNT * TC-CA-PER-RATE-1 (ICAP)) / 100",CPD110,CAPC-TWO-RATES,28859,"TC-CA-PER-LIMIT, TC-CA-PER-RATE-1",
+CAF-04,Cash advance fee,Banded fee — amount above the limit,"Above the limit the fee is split: rate 1 on the limit, rate 2 on the excess.","COMPUTE WS-CA-AMNT-OVER-LIMIT = CMT-AMNT - TC-CA-PER-LIMIT (ICAP)
+COMPUTE WS-CA-PERCENT-CHARGE ROUNDED =
+  ((TC-CA-PER-LIMIT (ICAP) * TC-CA-PER-RATE-1 (ICAP))
+   + (WS-CA-AMNT-OVER-LIMIT * TC-CA-PER-RATE-2 (ICAP))) / 100",CPD110,CAPC-TWO-RATES,28864,"TC-CA-PER-LIMIT, TC-CA-PER-RATE-1, TC-CA-PER-RATE-2",
+CAF-05,Cash advance fee,Floor and cap the fee,"The computed fee is raised to the minimum charge, or cut to the maximum charge.","IF WS-CA-PERCENT-CHARGE < TC-CA-PERCENT-MIN-CHRG
+  MOVE TC-CA-PERCENT-MIN-CHRG TO WS-CA-PERCENT-CHARGE
+IF WS-CA-PERCENT-CHARGE > TC-CA-PERCENT-MAX-CHRG
+  MOVE TC-CA-PERCENT-MAX-CHRG TO WS-CA-PERCENT-CHARGE",CPD110,CAPC-MIN-MAX,28873,"TC-CA-PERCENT-MIN-CHRG, TC-CA-PERCENT-MAX-CHRG","This is the classic 'x% of the advance, minimum RMn' rule."
+CAF-06,Cash advance fee,Raise the fee transaction,"The fee is posted as its own transaction, into the cash bucket.","PERFORM GENERATE-BASIC-TRANS
+MOVE 3700 TO GT-TRANS-CODE GT-TRANS-TYPE
+MOVE 'CSH1' TO GT-BAL-BUCKET
+MOVE WS-CA-PERCENT-CHARGE TO GT-AMNT",CPD110,CAPC-GEN-TRANS,28873,GT-TRANS-CODE 3700,Posting to CSH1 means the fee itself then attracts cash-rate interest.
+CAF-07,Cash advance fee,Cash balance used for authorisation,"Cash exposure = posted cash balance plus outstanding cash authorisations, less over-limit payments already credited.","COMPUTE ACR-CM-CASHBAL-AUTH =
+  CM-CASH-BALANCE + CM-CASH-ADV-OS-AUTH - CM-OL-CASH-PYMT",CPD110,9400-CUSTOMER-CALCULATE,29108,CM-CASH-ADV-OS-AUTH,
+LATE-01,Late / penalty charge,Balance the late fee is measured on,"The late-fee base is the opening (beginning) balance of the cycle, retail plus cash.","COMPUTE CM-STMT-BAL-FOR-LATE-FEE =
+  CM-RTL-BEG-BALANCE + CM-CASH-BEG-BALANCE",CPD110,CARDHOLDER-PROCESSING,5841,"CM-RTL-BEG-BALANCE, CM-CASH-BEG-BALANCE",
+LATE-02,Late / penalty charge,Waiver and zero-base guards,"No late charge is raised if the account or product waives it. If the base balance is zero or below, the accrued late-charge buckets are cleared.","IF WAIVE-LATE-CHARGES OR TC-WAIVE-LATE-CHRG (IBC)  GO TO LCP-XIT
+IF CM-STMT-BAL-FOR-LATE-FEE <= ZEROS
+  MOVE ZEROES TO CM-ACCR-LATE-CHG-CTD CM-ACCR-LATE-CHG-BNP",CPD110,LATE-CHARGE-PROCESSING,18186,"WAIVE-LATE-CHARGES, TC-WAIVE-LATE-CHRG",
+LATE-03,Late / penalty charge,Flat fee plus percentage of unpaid balance (flag 2),"A fixed charge plus a percentage of the unpaid statement balances across all retail, cash and insurance buckets.","COMPUTE WS-AMNT ROUNDED = TCM-LATE-CHARGE +
+  ((CM-RTL1-BALANCE-STMT + CM-CASH1-BALANCE-STMT
+    + CM-RTL2-BALANCE-STMT + CM-CASH2-BALANCE-STMT
+    + CM-RTL3-BALANCE-STMT + CM-RTL-INSUR-BNP) * TCM-LC-PERCENT)",CPD110,LATE-CHARGE-PROCESSING,18219,"TCF-LATE-CHARGE-FLAG=2, TCM-LATE-CHARGE, TCM-LC-PERCENT",
+LATE-04,Late / penalty charge,Flat fee only (flag 0 or 5),"A single fixed late charge, regardless of balance.","IF TCF-LATE-CHARGE-FLAG IS EQUAL TO 0 OR 5
+  COMPUTE WS-AMNT ROUNDED = TCM-LATE-CHARGE",CPD110,LATE-CHARGE-PROCESSING,18225,"TCF-LATE-CHARGE-FLAG=0/5, TCM-LATE-CHARGE",
+LATE-05,Late / penalty charge,Flat fee plus percentage of total unpaid,Variant that applies the percentage to a single total-unpaid figure.,"COMPUTE WS-AMNT ROUNDED =
+  TCM-LATE-CHARGE + (WS-TOT-UNPAID-BAL * TCM-LC-PERCENT)",CPD110,LATE-CHARGE-PROCESSING,18234,"TCM-LATE-CHARGE, TCM-LC-PERCENT",
+OVL-01,Over-limit,Amount over the credit limit,How far the posted balance exceeds the credit limit.,"COMPUTE CPCT-AMT-OVERLIMIT =
+  CM-RTL-BALANCE + CM-CASH-BALANCE - CM-CRLIMIT",CPD110,INPUT-OUTPUT-PROCESSING,23780,CM-CRLIMIT,
+OVL-02,Over-limit,Over-limit amount added to amount due,Any new over-limit excess not already demanded is added to the over-limit amount due.,"COMPUTE WS-AMNT = (CM-CURR-BALANCE - CM-CRLIMIT) - CM-OL-AMT-DUE
+COMPUTE CM-OL-AMT-DUE = CM-OL-AMT-DUE + WS-AMNT",CPD110,STATEMENT-PREPARATION,16260,CM-OL-AMT-DUE,
+LMT-01,Credit limit & availability,Cash limit derived from credit limit,The cash limit is a set percentage of the overall credit limit.,COMPUTE CM-CASH-LIMIT ROUNDED = TCM-CASH-LIMIT-PERCENT * CM-CRLIMIT,CPD110,CARDHOLDER-PROCESSING,7349,"TCM-CASH-LIMIT-PERCENT, CM-CRLIMIT",
+LMT-02,Credit limit & availability,Instalment limit derived from credit limit,The instalment limit is a set percentage of the overall credit limit.,COMPUTE CM-INSTL-LIMIT ROUNDED = TCM-INSTL-LIMIT-PERCENT * CM-CRLIMIT,CPD110,CARDHOLDER-PROCESSING,7351,"TCM-INSTL-LIMIT-PERCENT, CM-CRLIMIT",
+LMT-03,Credit limit & availability,Available credit,"Limit (grossed up by the permitted over-limit factor) less what is used, less outstanding authorisations, plus over-limit payments received.","COMPUTE CM-AVAIL-CREDIT ROUNDED =
+  (CM-CRLIMIT * TCM-OVER-LIMIT) - CM-CURR-BALANCE
+  - CM-AMNT-OUTST-AUTH + CM-OL-CASH-PYMT + CM-OL-RTL-PYMT",CPD110,CARDHOLDER-PROCESSING,7404,"TCM-OVER-LIMIT, CM-AMNT-OUTST-AUTH","TCM-OVER-LIMIT is a multiplier (e.g. 1.10 for a 10% tolerance), not an amount."
+LMT-04,Credit limit & availability,Available cash,"Cash limit grossed up by the over-limit factor, less cash balance and outstanding cash authorisations.","COMPUTE CM-AVAIL-CASH ROUNDED =
+  CM-CASH-LIMIT * TCM-OVER-LIMIT - CM-CASH-BALANCE
+  - CM-CASH-ADV-OS-AUTH + CM-OL-CASH-PYMT",CPD110,CARDHOLDER-PROCESSING,7375,"TCM-OVER-LIMIT, CM-CASH-ADV-OS-AUTH",
+LMT-05,Credit limit & availability,Available instalment limit,Instalment limit less instalment balance and outstanding instalment authorisations.,"COMPUTE CM-AVAIL-INSTL ROUNDED =
+  CM-INSTL-LIMIT - CM-INSTL-BAL - CM-AMNT-OUTST-INSTL",CPD110,CARDHOLDER-PROCESSING,7384,"CM-INSTL-BAL, CM-AMNT-OUTST-INSTL",
+LMT-06,Credit limit & availability,Instalment balance reserved against available credit,Only a configured share of the instalment balance is held back from the main available credit.,"COMPUTE CM-AVAIL-CREDIT =
+  CM-AVAIL-CREDIT - (TC-INSTL-EM-AVL-PER * CM-INSTL-BAL)",CPD110,CARDHOLDER-PROCESSING,7411,TC-INSTL-EM-AVL-PER,
+LMT-07,Credit limit & availability,Available credit net of accrued interest,Unbilled accrued interest is deducted from available credit so the customer cannot spend it.,"COMPUTE CM-AVAIL-CREDIT ROUNDED = (WS-AMNT
+  - CM-RTL-ACCRUED-INTR - CM-RTL2-ACCRUED-INTR - CM-RTL3-ACCRUED-INTR
+  - CM-CASH-ACCRUED-INTR - CM-CASH2-ACCRUED-INTR)",CPD110,CARDHOLDER-PROCESSING,7396,CM-*-ACCRUED-INTR,
+LMT-08,Credit limit & availability,Credit limit utilisation,"Debits as a proportion of the credit limit, scaled to one decimal place of a percentage.","COMPUTE WS-CREDIT-LIMIT-USG = (WS-USER-AMT-DEBITS / CM-CRLIMIT) * 1000
+COMPUTE CESF01-CRLIMIT-USG-TODAY = WS-CREDIT-LIMIT-USG / 10",CPD110,CARDHOLDER-PROCESSING,6014,"WS-USER-AMT-DEBITS, CM-CRLIMIT",x1000 then /10 preserves one decimal in integer arithmetic.
+MIN-01,Minimum payment / amount due,Bill the whole balance,"Where the product bills in full, the amount due is simply the current balance.",IF BILL-TOTAL-BALANCE  MOVE CM-CURR-BALANCE TO WS-PYMT,CPD110,COMPUTE-CURR-PYMT,28297,BILL-TOTAL-BALANCE,Charge cards and some corporate products use this.
+MIN-02,Minimum payment / amount due,Bill a fixed amount,A pre-set fixed instalment is billed instead of a percentage.,"IF BILL-FIXED-AMNT AND CM-FIXED-PYMT-AMNT > ZERO
+  MOVE CM-FIXED-PYMT-AMNT TO WS-PYMT",CPD110,COMPUTE-CURR-PYMT,28308,CM-FIXED-PYMT-AMNT,
+MIN-03,Minimum payment / amount due,Derive the fixed amount from principal,"The fixed payment is a percentage of principal, where principal excludes disputed balances and billed charges.","COMPUTE WS-PRINCIPAL-AMOUNT EQUAL CM-CURR-BALANCE
+  - CM-CASH-DISPUTED-BAL - CM-RTL-DISPUTED-BAL - WS-PRINCIPAL-CHARGES
+COMPUTE CM-FIXED-PYMT-AMNT ROUNDED EQUAL
+  WS-PRINCIPAL-AMOUNT * TCP-PERCENT (ITCP)",CPD110,SET-NEW-FIXED-PYMT,16543,TCP-PERCENT,"TCP-PERCENT is picked from a table band (ITCP) — high balance, reducing, or new-debit method."
+MIN-04,Minimum payment / amount due,Interest-only billing,Only interest held plus charges and billed interest fees are demanded.,"COMPUTE WS-PYMT = WS-RTL-ACCR-HOLD + WS-CASH-ACCR-HOLD
+  + WS-RTL-CHRG + WS-CASH-CHRG + WS-BILL-INTR-FEES",CPD110,COMPUTE-CURR-PYMT,28314,BILL-INTEREST-ONLY,
+MIN-05,Minimum payment / amount due,Split into bill-in-full and revolving parts,"Balances are split: WS-PYMT1 is billed in full (fees, instalment due), WS-PYMT2 is the revolving remainder.","MOVE ZEROES TO WS-PYMT1 WS-PYMT2
+PERFORM BAL-BUCKET-BILL-FULL
+ADD CM-CTD-IPP-BALANCE TO WS-PYMT1
+SUBTRACT CM-CTD-IPP-BALANCE FROM WS-PYMT2
+SUBTRACT CM-PCB-IPP-BALANCE FROM WS-PYMT2",CPD110,COMPUTE-CURR-PYMT,28325,"CM-CTD-IPP-BALANCE, CM-PCB-IPP-BALANCE",IPP = instalment payment plan; its current due is always billed in full.
+MIN-06,Minimum payment / amount due,Revolving part — divisor method,"Where the derive method is zero, the revolving part is divided by the payment term.","IF TCM-DERIVE-METHOD = ZERO
+  COMPUTE WS-PYMT ROUNDED = WS-PYMT1 + WS-PYMT2 / TCM-PAYMENT-TERM",CPD110,COMPUTE-CURR-PYMT,28335,"TCM-DERIVE-METHOD=0, TCM-PAYMENT-TERM",E.g. a term of 20 bills 1/20th = 5% of the revolving balance.
+MIN-07,Minimum payment / amount due,Revolving part — percentage method,Otherwise the revolving part is multiplied by the payment term treated as a percentage.,"ELSE
+  COMPUTE WS-PYMT ROUNDED =
+    WS-PYMT1 + WS-PYMT2 * TCM-PAYMENT-TERM / 100",CPD110,COMPUTE-CURR-PYMT,28341,"TCM-DERIVE-METHOD<>0, TCM-PAYMENT-TERM",E.g. a term of 5 bills 5% of the revolving balance.
+MIN-08,Minimum payment / amount due,Negative revolving part,If the revolving remainder is negative it is added as-is rather than being scaled.,"IF WS-PYMT2 < ZERO
+  COMPUTE WS-PYMT = WS-PYMT1 + WS-PYMT2",CPD110,COMPUTE-CURR-PYMT,28331,WS-PYMT2,
+MIN-09,Minimum payment / amount due,Bill the whole balance when no term is set,A zero payment term with a zero derive method means the full balance is demanded.,"IF TCM-PAYMENT-TERM = ZERO AND TCM-DERIVE-METHOD = ZERO
+  MOVE CM-CURR-BALANCE TO WS-PYMT",CPD110,COMPUTE-CURR-PYMT,28322,"TCM-PAYMENT-TERM, TCM-DERIVE-METHOD",
+MIN-10,Minimum payment / amount due,Apply the minimum payment floor,"If the computed amount is below the product minimum, the minimum is used — unless the balance is under the threshold, or the card is interest-only, budget or fixed-term-loan.","IF BILL-INTEREST-ONLY OR CM-CURR-BALANCE NOT > TCM-PYMT-THRESHOLD
+  NEXT SENTENCE
+ELSE IF (WS-PYMT < TCM-MINIMUM-PYMT)
+  AND NOT BUDGET-CARD AND NOT FIXED-TERM-LOAN-CARD
+  MOVE TCM-MINIMUM-PYMT TO WS-PYMT",CPD110,COMPUTE-CURR-PYMT,28349,"TCM-MINIMUM-PYMT, TCM-PYMT-THRESHOLD","This is the 'or RMn, whichever is higher' clause on a statement."
+MIN-11,Minimum payment / amount due,Round up to whole currency units,"Where the product bills in even dollars, .99 is added and the result truncated — i.e. rounded up.","IF BILL-EVEN-DOLLARS
+  ADD .99 TO WS-PYMT
+  MOVE WS-PYMT TO WS-DOLLARS
+  MOVE WS-DOLLARS TO WS-PYMT",CPD110,COMPUTE-CURR-PYMT,28356,BILL-EVEN-DOLLARS,"WS-DOLLARS has no decimal places, so the MOVE truncates."
+MIN-12,Minimum payment / amount due,Add the full over-limit excess,"If the balance is over the limit and the product demands all of it, the whole excess is added on top of the minimum.","IF CM-CURR-BALANCE > CM-CRLIMIT AND BILL-ALL-OVER-LIMIT
+  COMPUTE WS-PYMT = WS-PYMT + (CM-CURR-BALANCE - CM-CRLIMIT)",CPD110,COMPUTE-CURR-PYMT,28365,BILL-ALL-OVER-LIMIT,
+SVC-01,Service & transaction charges,Tiered per-transaction charge,"Transactions up to the free/banded limit are charged at rate 1, the rest at rate 2.","IF TCSC-LIMIT (ISC) > ZERO AND WS-COUNT > TCSC-LIMIT (ISC)
+  COMPUTE WS-CHRG =
+    (TCSC-LIMIT (ISC) * TCSC-RATE-1 (ISC))
+    + ((WS-COUNT - TCSC-LIMIT (ISC)) * TCSC-RATE-2 (ISC))",CPD110,CALCULATE-TRANS-CHRG,15540,"TCSC-LIMIT, TCSC-RATE-1, TCSC-RATE-2","WS-COUNT is the transaction count for the bucket, not an amount."
+SVC-02,Service & transaction charges,Flat per-transaction charge,"With no band, every transaction is charged at rate 1.",COMPUTE WS-CHRG = WS-COUNT * TCSC-RATE-1 (ISC),CPD110,CALCULATE-TRANS-CHRG,15551,TCSC-RATE-1,
+SVC-03,Service & transaction charges,Split the charge to retail or cash,The charge lands in the retail or the cash bucket depending on the service-charge type.,"IF TSC-RETAIL (ISC)  ADD WS-CHRG TO WS-RTL-CHRG
+ELSE  ADD WS-CHRG TO WS-CASH-CHRG",CPD110,CALCULATE-TRANS-CHRG,15556,TSC-RETAIL,
+SVC-04,Service & transaction charges,Cap the total service charge,"Retail and cash charges are totalled; if the total breaches the maximum, the bucket currently being processed is cut back so that the two together equal the cap.","COMPUTE WS-AMNT = WS-RTL-CHRG + WS-CASH-CHRG
+IF (WS-AMNT > TCSC-MAXIMUM)
+  IF (TSC-RETAIL (ISC))
+    COMPUTE WS-RTL-CHRG = TCSC-MAXIMUM - WS-CASH-CHRG
+  ELSE
+    COMPUTE WS-CASH-CHRG = TCSC-MAXIMUM - WS-RTL-CHRG",CPD110,CALCULATE-TRANS-CHRG,15560,"TCSC-MAXIMUM, TSC-RETAIL","The cap is on the combined charge, not per bucket. WS-MAX-TR-SW is set to flag that the cap was hit."
+BAL-01,Balances & statement,Current balance,"Retail plus cash balances, less amounts under dispute.","COMPUTE CM-CURR-BALANCE = CM-RTL-BALANCE + CM-CASH-BALANCE
+  - CM-RTL-DISPUTED-BAL - CM-CASH-DISPUTED-BAL",CPD110,COMPUTE-CURR-BAL,28272,"CM-RTL-BALANCE, CM-CASH-BALANCE",Disputed amounts are excluded from the balance the customer is asked to pay.
+BAL-02,Balances & statement,Current balance (pre-dispute form),A simple retail plus cash total used earlier in the cycle.,COMPUTE CM-CURR-BALANCE = CM-CASH-BALANCE + CM-RTL-BALANCE,CPD110,PA-BYPASS-MEM-USAGE-FEE,5679,"CM-CASH-BALANCE, CM-RTL-BALANCE",
+BAL-03,Balances & statement,Retail balance across sub-buckets,The three retail sub-buckets are summed into the retail total.,"COMPUTE CM-RTL-CURR-MON-BAL = CM-RTL1-CURR-MON-BAL
+  + CM-RTL2-CURR-MON-BAL + CM-RTL3-CURR-MON-BAL",CPD110,(statement build),27284,CM-RTL1/2/3-CURR-MON-BAL,"Sub-buckets carry different interest rates, which is why they are held apart."
+BAL-04,Balances & statement,Statement balance excludes billed-not-posted items,"The statement balance is the ledger balance less interest, service, misc, insurance and membership amounts that are billed but not yet posted.","COMPUTE CM-RTL1-BALANCE-STMT = CM-RTL1-BALANCE
+  - (CM-RTL-IBNP + CM-RTL-SVC-BNP + CM-RTL-MISC-FEES
+     + CM-RTL-INSUR-BNP + CM-RTL-MEMBER-BNP + CM-RTL1-FEE)",CPD110,RESET-ACCOUNT,16597,"CM-RTL-IBNP, CM-RTL-SVC-BNP",BNP = billed not posted. IBNP = interest billed not posted.
+BAL-05,Balances & statement,Cash statement balance,Same treatment on the cash side.,"COMPUTE CM-CASH1-BALANCE-STMT = CM-CASH1-BALANCE
+  - (CM-CASH-IBNP + CM-CASH-SVC-BNP + CM-CASH1-FEE)",CPD110,RESET-ACCOUNT,16630,"CM-CASH-IBNP, CM-CASH-SVC-BNP",
+BAL-06,Balances & statement,Statement totals,Retail and cash statement balances totalled for presentation.,"COMPUTE WS-RTL-STMT-BAL = CM-RTL1-BALANCE-STMT
+  + CM-RTL2-BALANCE-STMT + CM-RTL3-BALANCE-STMT
+COMPUTE WS-CASH-STMT-BAL = CM-CASH1-BALANCE-STMT + CM-CASH2-BALANCE-STMT",CPD110,(statement build),27784,CM-*-BALANCE-STMT,
+BAL-07,Balances & statement,Prior month closing principal and interest,At cycle close the principal (balance plus instalment balance) and the accrued interest are snapshotted.,"COMPUTE CM-PREV-MTH-CLOSE-PRIN = CM-CURR-BALANCE + CM-INSTL-BAL
+COMPUTE CM-PREV-MTH-CLOSE-INTR ROUNDED =
+  CM-CASH-ACCRUED-INTR + CM-CASH2-ACCRUED-INTR (+ retail terms)",CPD110,CARDHOLDER-PROCESSING,4793,CM-INSTL-BAL,
+RWD-01,Rewards & rebate,Bonus points earned in the cycle,"Net qualifying retail spend — debits less miscellaneous charges, less the annual fee, less non-payment credits — multiplied by the bonus rate.","COMPUTE WS-BONUS-BUCKS-EARNED ROUNDED =
+  ((CM-RTL-AMNT-DB - CM-RTL-MISC-CTD) - WS-TEMP-ANN-FEE
+   - (CM-RTL-AMNT-CR - CM-RTL-PYMT-CTD)) * TCM-BONUS-PERCENT",CPD110,STATEMENT-PREPARATION,14809,TCM-BONUS-PERCENT,"Refunds reduce earned points; payments do not, which is why payments are added back."
+RWD-02,Rewards & rebate,Bonus balance roll-forward,Opening bonus balance plus points earned less points redeemed in the cycle.,"COMPUTE CM-BB-BEG-BALANCE = CM-BB-BEG-BALANCE
+  + WS-BONUS-BUCKS-EARNED - CM-BB-USED-CTD",CPD110,STATEMENT-PREPARATION,15238,CM-BB-USED-CTD,
+RWD-03,Rewards & rebate,Cashback amount from Visa clearing,Cashback arrives in minor units and is rescaled to the destination currency's decimal convention.,"COMPUTE WS-AMT =
+  (CXVSA-FIN-TCR1-CASHBACK / 100) * (10 ** WS-DST-CCY-EXP)",CXCV010,CCCC0-FMT-PR-RE-CB-TCR1,6448,WS-DST-CCY-EXP,
+RWD-04,Rewards & rebate,Merchant rebate in the daily settlement,Merchant rebate fees are added back when the merchant's carried-forward balance is struck.,COMPUTE WS-TOT-AMT-MER-RB-FEE = MAR-CAC-REBATE-FEE (WS-SUB),CQD720,A000-INITIAL-PROCESSING,6294,MAR-CAC-REBATE-FEE,
+TAX-01,Tax (GST / SST),GST on merchant discount,"Tax is the discount amount multiplied by the GST rate held on the transaction, divided by 100.","COMPUTE WT-BDE-T-ENR-GST-AMT ROUNDED =
+  CQBDTE-T-ENR-DIS-AMT * CQBDTE-T-GST-RTE / 100",CQD720,C770-PROCESS-BDTE-DETAIL,3617,CQBDTE-T-GST-RTE,"The rate travels on the transaction record, so a rate change applies from its effective date."
+TAX-02,Tax (GST / SST),Daily discount GST net of enrolment GST,Total discount GST for the day less the GST already taken on enrolment fees.,"COMPUTE WS-DLY-DISC-GST = WS-TOT-DISC-GST
+  - WT-MCC-ENR-GST-AMT - WT-MCD-ENR-GST-AMT - WT-MPR-ENR-GST-AMT",CQD720,(daily totals),1975,WS-TOT-DISC-GST,
+TAX-03,Tax (GST / SST),Net sales grossed up by enrolment GST,Enrolment GST is added back into net sales so the settlement figure reconciles.,"COMPUTE WS-DLY-NET-SALES = WS-TOT-NET-SALES
+  + WT-MCC-ENR-GST-AMT + WT-MCD-ENR-GST-AMT + WT-MPR-ENR-GST-AMT",CQD720,(daily totals),1980,WS-TOT-NET-SALES,
+TAX-04,Tax (GST / SST),GST sign reversal on the statement detail,GST is flipped in sign when written to the merchant statement detail record.,"COMPUTE MSTD1-GST-AMT = WT-BDE-T-DIS-GST-AMT * -1
+COMPUTE MSAD1-GST-AMT = CQBDTE-T-FEE-GST-AMT * -1",CQD720,C770-PROCESS-BDTE-DETAIL,3716,WT-BDE-T-DIS-GST-AMT,"Fees are debits to the merchant, hence the sign flip for presentation."
+TAX-05,Tax (GST / SST),Interest expense to the YTD tax buckets,Interest paid is accumulated into calendar and fiscal year-to-date buckets for tax reporting.,"ADD CMT-AMNT TO CM-IE-YTD CM-IE-TAX-YTD
+  OC-INTEREST-PAID-CALENDAR-YTD OC-INTEREST-PAID-FISCAL-YTD",CPD110,TRANSACTION-PROCESSING,11519,CM-IE-TAX-YTD,
+MDR-01,Merchant discount (MDR),Average discount rate across cards,Total discount divided by the card count gives the average rate for the merchant.,COMPUTE WS-AVG-DISC-RATE = WS-TOT-DISC / WS-CARD-COUNT,CPM320,6005-COMPUTE-FEE-BASED-SALES,10152,"WS-TOT-DISC, WS-CARD-COUNT",Guard: only reached when WS-CARD-COUNT is non-zero.
+MDR-02,Merchant discount (MDR),Effective rate after volume concession,"The average rate is reduced by a concession looked up on discount type, sales band and range.","COMPUTE WS-DISC-RATE = WS-AVG-DISC-RATE
+  - OCMDM-PCT-UNDER-BASE-RATE (X-OCM-DISC, X-OCM-SALES, X-OCM-RANGE)",CPM320,6030-COMPUTE-RATE,10359,OCMDM-PCT-UNDER-BASE-RATE,Three-dimensional table: higher volume earns a bigger reduction.
+MDR-03,Merchant discount (MDR),Discount amount charged to the merchant,Fee-based sales multiplied by the effective discount rate.,"COMPUTE MMD-AMT-DISC (1) ROUNDED =
+  WS-AMT-FEE-BASED-SALES * WS-DISC-RATE",CPM320,6030-COMPUTE-RATE,10375,"WS-AMT-FEE-BASED-SALES, WS-DISC-RATE",
+MDR-04,Merchant discount (MDR),Discount accumulated across sales bands,Each sales band's amount is rated separately and added to the running discount.,"COMPUTE MMD-AMT-DISC (1) ROUNDED =
+  MMD-AMT-DISC (1) + (WS-FBS-AMNT * WS-DISC-RATE)",CPM320,6045-CRBD-SALES-RANGES,10430,WS-FBS-AMNT,
+MDR-05,Merchant discount (MDR),Back-solve the effective rate,"The blended rate actually charged, derived from the discount taken over the sales it was taken on.",COMPUTE WS-DISC-RATE = MMD-AMT-DISC (1) / WS-AMT-FEE-BASED-SALES,CPM320,6040-COMPUTE-RATE-BAND-DISC,10397,MMD-AMT-DISC,Used for the rate shown on the merchant statement.
+MDR-06,Merchant discount (MDR),Merchant settlement (ACH) amount,Sales less returns across all card schemes gives the amount to pay the merchant.,"COMPUTE WS-SALES =
+  MMD-VI-AMT-TOTAL-SALES (1) - MMD-VI-AMT-TOTAL-RETURNS (1)
+  + MMD-MC-... + MMD-JCB-... (per scheme)
+COMPUTE CPWMMR-MK4-ACH-AMOUNT = WS-SALES * -1",CPM320,5710-GEN-ACH-MERCH-DEPOSIT,10005,MMD-*-AMT-TOTAL-SALES/RETURNS,Sign is flipped for the outgoing payment instruction.
+MDR-07,Merchant discount (MDR),Discount and fees withheld from settlement,Discount plus fees are settled as a separate ACH debit.,COMPUTE CPWMMR-MK4-ACH-AMOUNT = (MMD-AMT-DISC (2) + MMD-AMT-FEES (2)),CPM320,5730-GENERATE-ACH-DISCOUNT,10111,"MMD-AMT-DISC, MMD-AMT-FEES",
+MDR-08,Merchant discount (MDR),Merchant balance carried forward,"Opening balance plus net sales and payment adjustments, less adjustments, fees and fee GST, plus rebates.","COMPUTE MAR-BALANCE-CF = MAR-BALANCE-BF + WS-TOT-NET-SALES
+  + WS-TOT-PAYMENT-ADJ - WS-TOT-ADJUSTMENT - WS-TOT-FEES
+  - WS-TOT-FEES-GST + WS-TOT-AMT-MER-RB-FEE + WS-AMT-REBATE",CQD720,A000-INITIAL-PROCESSING,2009,MAR-BALANCE-BF,The merchant accounting equivalent of a statement roll-forward.
+ICG-01,Interchange,Net item interchange fee,"A per-item fee times the item count, plus an ad-valorem rate times the amount — both looked up by acquirer region, issuer region and programme.","COMPUTE WS-MC-NFI-FEE (lvl) =
+  (WS-MC-NFI-NBR (lvl) * WS-ICG-RTL-PGM-ITEM (acq, iss, pgm))
+  + (WS-MC-NFI-AMT (lvl) * WS-ICG-RTL-PGM-RATE (acq, iss, pgm))",CPD030,CALC-MC-BATCH-NET-ITEM-FEE,5806,"WS-ICG-RTL-PGM-ITEM, WS-ICG-RTL-PGM-RATE",The standard scheme interchange shape: fixed per transaction plus a percentage.
+ICG-02,Interchange,Interchange fee sign,The interchange figure is negated to express it as a cost.,COMPUTE WS-MC-BATCH-INTCHG-FEE ROUNDED = WS-MC-SI-AMT3 * -1.00,CPD030,CALC-MC-BATCH-NET-ITEM-FEE,5827,WS-MC-SI-AMT3,
+ICG-03,Interchange,Batch net amount,Cash advance and ATM amounts are folded into the batch net.,"COMPUTE WS-MC-BATCH-NET-AMT = WS-MC-BATCH-NET-AMT
+  + WS-MC-BATCH-AMT-CASH-ADV + WS-MC-BATCH-AMT-ATM",CPD030,CALC-MC-BATCH-NET-ITEM-FEE,5831,WS-MC-BATCH-AMT-CASH-ADV,
+ICG-04,Interchange,Batch gross including fees,"Net plus interchange, cash advance and ATM fees gives the settlement figure for the batch.","COMPUTE WS-MC-BATCH-AMT = WS-MC-BATCH-NET-AMT
+  + WS-MC-BATCH-INTCHG-FEE + WS-MC-BATCH-FEE-CASH-ADV
+  + WS-MC-BATCH-FEE-ATM",CPD030,CALC-MC-BATCH-NET-ITEM-FEE,5835,WS-MC-BATCH-INTCHG-FEE,
+ICG-05,Interchange,Visa interchange rate maintenance,Scheme interchange rates are held on the organisation control record and maintained by percentage or absolute change.,"COMPUTE FM1-NO-47-VISA-INTCHG-RATE (i) =
+  OCM-VISA-INTCHG-RATE (j) * WS-PERCENT-HOLD
+  (or + / - WSCPS-MAINT-FIELD-NUMERIC)",CPU600,4450-FILL-FM-47,4695,OCM-VISA-INTCHG-RATE,CPU600 is the mass-maintenance program; it changes the rates the batch then applies.
+FX-01,Currency conversion,Minor-unit rescaling on Visa clearing,Visa carries amounts in minor units with a currency exponent; the amount is divided by 100 and rescaled by 10 to the power of that exponent.,"COMPUTE WS-AMT =
+  (CXVSA-DSP-TCR1-DEST-AMT / 100) * (10 ** WS-DST-CCY-EXP)",CXCV010,CCKC0-FMT-TC33-RE-CB-TCR1,10188,WS-DST-CCY-EXP,"Handles currencies with 0, 2 or 3 decimal places from one wire format."
+FX-02,Currency conversion,Currency rate table,Conversion rates are read from the currency rate table file rather than computed.,"SELECT CURRENCY-RATE-TABLE-FILE ASSIGN TO SYS004-CPRTB
+  ACCESS IS DYNAMIC",CPD030,FILE-CONTROL,30,SYS004-CPRTB,"Rate maintenance is a data change, not a code change."
+INS-01,Instalment / fixed-term loan,Months on which interest is payable,Repayment term less the interest-free period.,"COMPUTE WS-FTL-MNTHS-INT-PAYABLE =
+  (CMA-FTL-REPAYMENT-TERM - CMA-FTL-INT-FREE-PERIOD)",CPD110,(fixed-term loan build),27507,"CMA-FTL-REPAYMENT-TERM, CMA-FTL-INT-FREE-PERIOD",
+INS-02,Instalment / fixed-term loan,Insurance premium share of the instalment,"The premium's share of the instalment due, pro-rated by premium over premium plus principal.","COMPUTE WS-AMNT4 = ((WS-FTL-TOT-DUE-TD - WS-FTL-TOT-INT-TD)
+  * (CMA-FTL-INS-PREMIUM
+     / (CMA-FTL-INS-PREMIUM + WS-FTL-TOT-PRNCPL-AMNT)))",CPD110,(fixed-term loan build),27936,CMA-FTL-INS-PREMIUM,
+INS-03,Instalment / fixed-term loan,Total loan principal,The four principal tranches added together.,"COMPUTE CRR-R45-PRINCIPAL-AMT = (CMA-FTL-LOAN-PRNCPL1
+  + CMA-FTL-LOAN-PRNCPL2 + CMA-FTL-LOAN-PRNCPL3 + CMA-FTL-LOAN-PRNCPL4)",CPD110,REPORTS-AND-TRANSACTIONS,17059,CMA-FTL-LOAN-PRNCPL1..4,
+INS-04,Instalment / fixed-term loan,Instalment exposure for authorisation,Instalment balance plus outstanding instalment authorisations.,COMPUTE ACR-INSTL-BAL = CM-INSTL-BAL + CM-AMNT-OUTST-INSTL,CPD110,9400-CUSTOMER-CALCULATE,29111,CM-INSTL-BAL,
+INS-05,Instalment / fixed-term loan,Credit used including instalment share,Credit used is increased by the configured share of the instalment balance.,"COMPUTE ACR-CREDIT-USED = ACR-CREDIT-USED
+  + (TC-INSTL-EM-AVL-PER * CM-INSTL-BAL)",CPD110,9400-CUSTOMER-CALCULATE,29114,TC-INSTL-EM-AVL-PER,
+GL-01,Provision & charge-off,Provisional interest net,"Provisional interest less negative provisional interest, accumulated for the general ledger.","COMPUTE WST-PROVISIONAL ROUNDED = WST-PROVISIONAL
+  + CM-RTL-PROVIS-INTR - CM-RTL-NEG-PROVIS-INTR",CPD110,CARDHOLDER-PROCESSING,7038,CM-RTL-PROVIS-INTR,CPD110B1 carries the same computation over the ABP (account balance process) record.
+GL-02,Provision & charge-off,Interest on the provisional balance,Daily fraction times the provisional retail balance times the rate.,"COMPUTE WSP-INT ROUNDED =
+  WSI-DAY-FACTOR * WSP-RTL-PROVIS-BAL * WSI-RATE-1",CPD110,9500-SORT-SUSPENSE-SORT-FILE,29466,WSP-RTL-PROVIS-BAL,Suspended interest on delinquent accounts: accrued but not taken to income.
+GL-03,Provision & charge-off,Gross charge-off,"Bad-debt, bankruptcy, fraud and counterfeit write-offs added into one gross charge-off figure.","COMPUTE WSS117-CQ-AX3F-GROSS-CHGOFF (n) =
+  ...BDEBT-WTEOFF + ...BKRUPT-WTEOFF
+  + ...FRAUD-LOSSES + ...CTFEIT-LOSSES + ...",CPU515,PRINT-SCHEDULE-TYPE,7035,WSS117-CQ-AX-* buckets,Feeds the quarterly affiliation / regulatory schedule.
+GL-04,Provision & charge-off,Interest activity to the general ledger,Each accrual is mirrored to a GL amount and posted through the cardholder GL routine.,"COMPUTE WS-AMOUNT-GL ROUNDED = WSI-ACCRUAL
+  PERFORM GENERATE-INT-ACTIV-GL / GGTG-UPD-CARDH-GL",CPD110,INTEREST-PROCESSING,12502,WS-AMOUNT-GL,Keeps the subsidiary ledger and the GL in step day by day.
+GL-05,Provision & charge-off,Rounding to the cent on GL transactions,"Half a cent is added before the amount is moved to the transaction field, giving round-half-up.",COMPUTE GT-AMNT = WSI-ACCRUAL + .005,CPD110,REPORTS-AND-TRANSACTIONS,17669,WSI-ACCRUAL,"The receiving field has two decimals, so the MOVE truncates the rest."
+EPP-01,Instalment / fixed-term loan,Monthly instalment from item price,The financed item price divided by the number of payment terms gives the monthly instalment.,COMPUTE WS-MERCH-ADJ-AMT ROUNDED = EPT-ITEM-PRICE / EPT-PAY-TERM,EPD001,(merchant adjustment build),2212,"EPT-ITEM-PRICE, EPT-PAY-TERM",Easy Payment Plan. The merchant adjustment is the subsidy the merchant funds.
+EPP-02,Instalment / fixed-term loan,Value of the waived months,"The monthly amount multiplied by the number of months in the waiver window, inclusive of both ends.","COMPUTE WS-MERCH-ADJ-AMT =
+  WS-MERCH-ADJ-AMT * (EPT-WAIVE-TO-MOS - EPT-WAIVE-FR-MOS + 1)",EPD001,(merchant adjustment build),2214,"EPT-WAIVE-FR-MOS, EPT-WAIVE-TO-MOS","The +1 makes the range inclusive — months 3 to 6 is four months, not three."
+EPP-03,Instalment / fixed-term loan,Instalment billed during the interest-free window,"Inside the interest-free months the billed amount is the standard instalment less the interest element, so only principal is demanded.","IF EPT-INTR-FREE-MOS > 0
+  IF EPT-PAID-TERMS > EPT-INTR-FREE-MOS
+    MOVE EPT-MON-INSTL-AMT TO EPGTF-TRANS-AMOUNT
+  ELSE IF EPT-PAID-TERMS = 1
+    MOVE EPT-FIRST-PAY-AMT TO EPGTF-TRANS-AMOUNT
+  ELSE
+    COMPUTE EPGTF-TRANS-AMOUNT = EPT-MON-INSTL-AMT - WS-INTEREST-TEMP",EPD001,0231-CONTINUE,2352,"EPT-INTR-FREE-MOS, EPT-PAID-TERMS, EPT-MON-INSTL-AMT","The first instalment uses EPT-FIRST-PAY-AMT, which may differ from later ones."
+EPP-04,Instalment / fixed-term loan,Principal portion of an instalment,The instalment less its interest element is the principal repaid this month.,COMPUTE EPGTF-PRIN-AMOUNT = EPGTF-TRANS-AMOUNT - WS-INTEREST,EPD001,0231-CONTINUE,2363,WS-INTEREST,"Standard amortisation split: interest first, the rest reduces principal."
+EPP-05,Instalment / fixed-term loan,Amortise the outstanding balances,"Outstanding principal is reduced by the principal repaid, and outstanding interest by the interest taken.","COMPUTE EPT-OUTS-PRINCIPAL = EPT-OUTS-PRINCIPAL - EPGTF-PRIN-AMOUNT
+SUBTRACT WS-INTEREST FROM EPT-OUTS-INT",EPD001,0231-CONTINUE,2365,"EPT-OUTS-PRINCIPAL, EPT-OUTS-INT",Principal and interest are tracked as separate outstanding balances throughout the plan.
+EPP-06,Instalment / fixed-term loan,Early settlement amount,Settling early demands the whole outstanding principal plus the outstanding interest.,COMPUTE EPGTF-TRANS-AMOUNT = EPT-OUTS-PRINCIPAL + EPT-OUTS-INT,EPD001,0231-CONTINUE,2306,"EPT-OUTS-PRINCIPAL, EPT-OUTS-INT","Whether unearned interest is rebated is a product decision, not visible in this statement alone."
+PAY-01,Payment allocation,Retail share of a payment,"When a payment must be split across retail and cash, the retail share is retail's proportion of the two statement balances.","COMPUTE WS-TEMP-RATE ROUNDED =
+  WS-RTL-STMT-BAL / (WS-CASH-STMT-BAL + WS-RTL-STMT-BAL)",CPS515,PYMT-METHOD-03,203,"WS-RTL-STMT-BAL, WS-CASH-STMT-BAL",Only applied when both balances are above zero; otherwise the payment goes wholly to the non-zero side.
+PAY-02,Payment allocation,Apply the retail share,The payment multiplied by the retail proportion is posted to retail.,"MOVE WS-PYMT TO WS-SAVE-PYMT
+COMPUTE WS-PYMT ROUNDED = WS-SAVE-PYMT * WS-TEMP-RATE",CPS515,PYMT-METHOD-03,207,WS-TEMP-RATE,
+PAY-03,Payment allocation,Remainder goes to cash,"Whatever is left after the retail share is posted to the cash balance, so nothing is lost to rounding.","COMPUTE WS-SAVE-PYMT = WS-SAVE-PYMT - WS-PYMT
+PERFORM PPT-RTL-STMT-BAL
+MOVE WS-SAVE-PYMT TO WS-PYMT
+PERFORM PPT-CASH-STMT-BAL",CPS515,PYMT-METHOD-03,209,WS-SAVE-PYMT,Taking the remainder rather than a second multiplication is what keeps the two halves summing to the payment.
+PAY-04,Payment allocation,Split against current-month balances,"The same proportional split, applied to current-month balances when the payment exceeds the statement balances.","COMPUTE WS-TEMP-RATE ROUNDED =
+  CM-RTL-CURR-MON-BAL / (CM-CASH-CURR-MON-BAL + CM-RTL-CURR-MON-BAL)",CPS515,PYMT-METHOD-04,222,"CM-RTL-CURR-MON-BAL, CM-CASH-CURR-MON-BAL","Statement balances are cleared first, then current-month balances."
+REC-01,Reconciliation & control,Accrued interest bucket roll-forward,"Opening balance plus transfers in and accruals and debit adjustments, less transfers out, credit adjustments and waivers, gives the closing bucket.","COMPUTE TCAI-ENDING-BALANCE (IAI) =
+  TCAI-BEG-BALANCE (IAI) + TCAI-TRANSFER-IN (IAI)
+  - TCAI-TRANSFER-OUT (IAI) + TCAI-ACCRUED (IAI)
+  + TCAI-DEBIT-ADJUST (IAI) - TCAI-CREDIT-ADJUST (IAI) - ...",CPD810,KA040-ACCUM-ENDING-BALS,1816,TCAI-* buckets,CPD810 merges CPD110's updates into CPQAF. A parallel set of CO- fields tracks charged-off accounts.
+REC-02,Reconciliation & control,Provisional interest bucket roll-forward,"The same roll-forward for suspended (provisional) interest, including movements to anticipated and waivers.","COMPUTE TCPI-ENDING-BALANCE = TCPI-BEG-BALANCE + TCPI-ACCRUED
+  - TCPI-NEG-ACCRUED + TCPI-TRANSFER-IN - TCPI-TO-ANTICI
+  - TCPI-WAIVED + TCPI-NEG-WAIVED - TCPI-TRANSFER-OUT",CPD810,KC010-ACCUM-END-PROV-BALS,2018,TCPI-* buckets,
+REC-03,Reconciliation & control,Bucket variance check,The independently accumulated total is compared with the rolled-forward bucket; a non-zero difference is the control break.,"COMPUTE WS-AMNT =
+  WST-ENDING-ACCRUED (WS-TA-IDX) - TCAI-ENDING-BALANCE (IAI)",CPD810,KA050-COMPARE-END-BALS,1907,WST-ENDING-ACCRUED,This is the out-of-balance detector for interest. A non-zero result is what an operator investigates.
+REC-04,Reconciliation & control,Portfolio balance roll-forward,"Organisation-level closing balance: opening plus interest and transfers in and debits, less transfers out, charge-offs and credits.","COMPUTE WS-WORK-AMT = WS-ORG-BEG-BAL + WS-ORG-INTEREST
+  + WS-ORG-TRNSF-IN - WS-ORG-TRNSF-OUT - WS-REG-CHGOFFS
+  + WS-TOT-AMT-DB - WS-TOT-AMT-CR",CPU580,4499-OT-BAL-TOTALS,2774,WS-ORG-* accumulators,
+REC-05,Reconciliation & control,Charged-off portfolio roll-forward,"The same roll-forward on the charged-off side, where charge-offs add to rather than reduce the balance.","COMPUTE WS-CO-WORK-AMT = WS-CO-ORG-BEG-BAL + WS-CO-ORG-INTEREST
+  + WS-CO-CHGOFFS + WS-CO-TOT-AMT-DB + WS-CO-ORG-TRNSF-IN
+  - WS-CO-ORG-TRNSF-OUT - WS-CO-TOT-AMT-CR",CPU580,4499-OT-BAL-TOTALS,2788,WS-CO-* accumulators,Note the sign on charge-offs is opposite to the regular portfolio — they move balance between the two.
+GL-06,Provision & charge-off,Acquiring fee aggregation for GL,"Purchase, quasi-cash and chargeback fees are netted into one posting amount per GL category.","COMPUTE WS-TOT-AMT = WS-LOC-ACQ-PURC-FEE + WS-LOC-ACQ-QUASI-FEE
+  + WS-LOC-ACQ-CB-FEE + WS-LOC-ACQ-QUASI-CB-FEE
+  - WS-LOC-ACQ-CB-R-FEE - WS-LOC-ACQ-QUASI-CB-R-FEE",CP615100,(GL category build),2422,WS-LOC-ACQ-* fee buckets,"LOC = local, INT = international; ACQ = acquiring, ISS = issuing. CB-R is chargeback reversal."
+GL-07,Provision & charge-off,Scale the GL amount to posting currency,The settlement amount is rescaled by ten to the power of the posting currency's exponent before it is written to the GL.,COMPUTE WS-TOT-AMT = (WS-TOT-AMT * (10 ** CSNGL-GL-POST-CURR-EXP)),CP615100,5100-WRITE-GL-ENTRY,2885,CSNGL-GL-POST-CURR-EXP,Same mechanism in CP615110. Lets one GL interface serve currencies with different decimal places.
+GL-08,Provision & charge-off,Acquiring settlement total,"Purchases, quasi-cash, manual and reversal amounts netted against returns for the GL entry.","COMPUTE WS-TOT-AMT = WS-LOC-ACQ-PURC + WS-LOC-ACQ-QUASI
+  + WS-LOC-ACQ-MANUAL + WS-LOC-ACQ-PURC-REV-RTN
+  - WS-LOC-ACQ-PURC-RTN",CP615100,5000-GEN-GL-ENTRY,1599,WS-LOC-ACQ-* amount buckets,
+FX-03,Currency conversion,Minor units to major units,Scheme files carry amounts in minor units (cents); multiplying by 0.01 converts them to the major unit before reporting.,"COMPUTE MERCON-VI-AMT-NET-SALES (1) =
+  MERCON-VI-AMT-NET-SALES (1) * 0.01",CP603160,4950-CONVERT-TO-DECIMAL,1875,(scheme amount fields),Applied field by field across every scheme and amount category — 120 such statements in this program alone.
+FX-04,Currency conversion,Cashback scaled by transaction currency,"Cashback is divided by ten to the power of the transaction currency's exponent, or by 100 where no exponent applies.","COMPUTE CXSTX-D-CASHBACK-AMT = WS-ADD-AMT / (10 ** CXS120-TXN-CCY-EXP)
+(else) COMPUTE CXSTX-D-CASHBACK-AMT = WS-ADD-AMT / 100",CXPI040,(cashback build),4476,CXS120-TXN-CCY-EXP,
+RWD-05,Rewards & rebate,Cash rebate at a flat rate,A flat one percent of the transaction amount is credited as cash rebate.,COMPUTE WS-CASH-REBATE ROUNDED = LF-OUTPUT-AMOUNT * 0.0100,CP621660,4000-FORMAT-PDB-REC,1837,LF-OUTPUT-AMOUNT,The 0.0100 rate is hard-coded in this program rather than table-driven — worth noting for any rate change.
+RWD-06,Rewards & rebate,MDR rebate sign,"The merchant discount rebate is negated for the output record, expressing it as a credit.",COMPUTE LF-OUTPUT-MDR-REBATE = LF-OUTPUT-MDR-REBATE * -1,CP621660,4000-FORMAT-PDB-REC,1833,LF-OUTPUT-MDR-REBATE,
+MNT-01,Mass maintenance,Percentage increase factor,"A percentage increase is turned into a multiplier by dividing by 100 and adding one, then applied to the current value.","COMPUTE WS-PERCENT-HOLD = (WSCPS-MAINT-FIELD-NUMERIC-R (WS-MAINT) / 100) + 1
+COMPUTE FM1-NH-01-CREDIT-LIMIT = CUR-AMOUNT-OUT * WS-PERCENT-HOLD",CPU601,4200-FILL-FM-01,3379,WSCPS-MAINT-FIELD-NUMERIC-R,A 10% rise becomes a multiplier of 1.10. This is how bulk limit and rate changes are applied.
+MNT-02,Mass maintenance,Percentage decrease factor,A percentage decrease becomes one minus the fraction.,COMPUTE WS-PERCENT-HOLD = 1 - (WSCPS-MAINT-FIELD-NUMERIC-R (WS-MAINT) / 100),CPU601,4200-FILL-FM-01,3388,WSCPS-MAINT-FIELD-NUMERIC-R,
+MNT-03,Mass maintenance,Absolute increase or decrease,Where the change is an amount rather than a percentage it is simply added to or subtracted from the current value.,"COMPUTE FM1-NH-01-CREDIT-LIMIT =
+  CUR-AMOUNT-OUT + WSCPS-MAINT-FIELD-NUMERIC-R (WS-MAINT)
+(or - for a decrease)",CPU601,4200-FILL-FM-01,3402,WSCPS-MAINT-FIELD-NUMERIC-R,
+AUT-01,Credit limit & availability,Available credit at authorisation,During an authorisation enquiry the instalment share of the requested amount is deducted from available credit before the decision.,"COMPUTE CM-AVAIL-CREDIT ROUNDED = CM-AVAIL-CREDIT
+  - (AUIS-INQ-AMOUNT-SAVE-AREA * SEC-TC-INSTL-EM-AVL-PER)",AUS301V,(authorisation enquiry),3910,"AUIS-INQ-AMOUNT-SAVE-AREA, TC-INSTL-EM-AVL-PER",Parallel forms exist for customer level (CR-AVAIL-CREDIT) and corporate level (CORP-CR-AVAIL-CREDIT).
+AUT-02,Credit limit & availability,Release the reserve after the decision,The same instalment reserve is added back once the enquiry amount no longer applies.,"COMPUTE CM-AVAIL-CREDIT ROUNDED = CM-AVAIL-CREDIT
+  + (AUIS-INQ-AMOUNT-SAVE-AREA * TC-INSTL-EM-AVL-PER)",AUS301V,(authorisation enquiry),8531,AUIS-INQ-AMOUNT-SAVE-AREA,
+STA-01,Merchant volume & statistics,Average ticket size,"Sales amount divided by sales count gives the average ticket, computed separately for international, domestic and out-of-scheme.","COMPUTE QMMRSTA-SLE-ITL-TKT (1) =
+  QMMRSTA-SLE-ITL-AMT (1) / QMMRSTA-SLE-ITL-NBR (1)",QMD045,(merchant statistics),288,"QMMRSTA-SLE-*-AMT, -NBR",Each divide is guarded by a non-zero count test.
+STA-02,Merchant volume & statistics,Total sales across channels,"Daily international, domestic and out-of-scheme amounts summed to the total.","COMPUTE QMMRSTA-SLE-TTL-AMT (1) =
+  (QMMSTAT-DLY-ITL-AMT + QMMSTAT-DLY-DOM-AMT + QMMSTAT-DLY-OUS-AMT)",QMD045,(merchant statistics),325,QMMSTAT-DLY-* amounts,
+STA-03,Merchant volume & statistics,Repayment as a percentage of balance,The payment received expressed as a percentage of the current balance.,"COMPUTE WS-REPAY-PERCENT ROUNDED =
+  (BNSTRN-AMT / BNS105-CURR-BALANCE (2)) * 100",BNDPAYE1,3000-CALC-REPAY-PERCENT,538,"BNSTRN-AMT, BNS105-CURR-BALANCE","Used to classify payment behaviour — full, partial or minimum payer."
+MDR-09,Merchant discount (MDR),Fee-based sales,"Sales less returns (or plus returns, depending on how the product treats refunds) gives the base the discount is charged on.","COMPUTE WS-AMT-FEE-BASED-SALES =
+  MPL-PL-AMT-TOTAL-SALES (2) - MPL-PL-AMT-TOTAL-RETURNS (2)
+(or + MPL-PL-AMT-TOTAL-RETURNS (2))",CPM322,3000-COMPUTE-FEE-BASED-SALES,453,"MPL-PL-AMT-TOTAL-SALES, -RETURNS","Whether returns reduce or add to the fee base is a configured choice, and it changes what the merchant pays."
+MDR-10,Merchant discount (MDR),Local fee-based sales,Outgoing (non-local) sales are removed so that local and international volumes can be priced differently.,"COMPUTE WS-AMT-LOCAL-FEE-BASED-SALE =
+  (MPL-PL-AMT-TOTAL-SALES (2) - MPL-PL-AMT-OUTGO-SALES (2))
+  - (MPL-PL-AMT-TOTAL-RETURNS (2) - MPL-PL-AMT-OUTGO-RETURNS (2))",CPM322,3000-COMPUTE-FEE-BASED-SALES,500,MPL-PL-AMT-OUTGO-SALES,
