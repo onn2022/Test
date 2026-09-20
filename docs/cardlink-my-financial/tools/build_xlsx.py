@@ -20,7 +20,11 @@ THIN   = Side(style='thin', color='BFBFBF')
 BORDER = Border(left=THIN, right=THIN, top=THIN, bottom=THIN)
 MONO   = 'Consolas'
 
+stmts = json.load(open(D + '/extracted_statements.json'))
+
 wb = Workbook()
+# No cached values can be written from here, so make Excel recalculate on open.
+wb.calculation.fullCalcOnLoad = True
 
 def style_header(ws, row, ncols):
     for c in range(1, ncols + 1):
@@ -73,8 +77,8 @@ rows = [
  ('Members containing arithmetic', '4,667'),
  ('Arithmetic statements repository-wide', '86,996'),
  ('Statements with a monetary keyword', '29,239 across 1,359 members'),
- ('Programs read in full for this study', '19 (listed on the Programs tab) — 2,600,000+ lines of COBOL'),
- ('Statements extracted from those 19', '21,738, of which 11,964 carry a monetary keyword'),
+ ('Programs read in full for this study', '20 (listed on the Programs tab) — 2,600,000+ lines of COBOL'),
+ ('Statements extracted from those 20', '21,738, of which 11,964 carry a monetary keyword'),
  ('', ''),
  ('METHOD', ''),
  ('1. Locate', 'The repository-wide scan ranked members by the number of arithmetic statements carrying monetary keywords.'),
@@ -86,7 +90,7 @@ rows = [
  ('', ''),
  ('SCOPE AND LIMITATIONS', ''),
  ('Read this before relying on the workbook', ''),
- ('Coverage', 'The 19 programs read in full hold roughly half of all monetary-keyword arithmetic in the MY repository. '
+ ('Coverage', 'The 20 programs read in full hold roughly half of all monetary-keyword arithmetic in the MY repository. '
               'The remaining members are inventoried on the MY Scan Coverage tab but were not read line by line. '
               'Low-volume members may contain formulas not represented here.'),
  ('No COPY expansion', 'Copybooks were not expanded. Arithmetic inside a copybook is attributed to the copybook, not to every program that includes it.'),
@@ -167,11 +171,10 @@ body(ws, 5, tot, 3, wrap_cols=(1,3))
 for c in range(1, 4):
     cell = ws.cell(row=tot, column=c); cell.font = Font(name=FONT, bold=True, size=9); cell.fill = SUBFIL
 
-ws.cell(row=tot+2, column=1, value='Raw scan — arithmetic statements extracted from the 19 programs read in full')
+ws.cell(row=tot+2, column=1, value='Raw scan — arithmetic statements extracted from the 20 programs read in full')
 ws.cell(row=tot+2, column=1).font = Font(name=FONT, bold=True, size=11, color=NAVY)
 ws.cell(row=tot+3, column=1, value='Classified domain'); ws.cell(row=tot+3, column=2, value='Statements')
 ws.cell(row=tot+3, column=3, value='Of which COMPUTE / MULTIPLY / DIVIDE')
-stmts = json.load(open(D + '/extracted_statements.json'))
 fin = [s for s in stmts if s['financial']]
 rawdoms = sorted(Counter(s['domain'] for s in fin).items(), key=lambda x: -x[1])
 r = tot + 4
@@ -226,13 +229,18 @@ ws = wb.create_sheet('Programs')
 ws['A1'] = 'Programs read in full for this study'
 ws['A1'].font = Font(name=FONT, bold=True, size=14, color=NAVY)
 ws.append([]); ws.append([])
+ws['A2'] = ('Counts are from this study\'s own parse of each member, so they tie back to the Arithmetic Detail tab. '
+            'The repository-wide scan on the MY Scan Coverage tab used a slightly different keyword test and may differ by a statement or two.')
+ws['A2'].font = Font(name=FONT, size=9, italic=True, color='595959')
 ws.append(['Program','Type','Role','Lines','Arithmetic statements','With monetary keyword','Computations documented'])
 PG = 4
 inv = {x['member']: x for x in json.load(open(D + '/arithmetic_inventory.json'))}
 catcount = Counter(r[5] for r in CATALOGUE)
+own_arith = Counter(s['member'] for s in stmts)
+own_money = Counter(s['member'] for s in stmts if s['financial'])
 for name, typ, role in PROGRAMS:
     i = inv.get(name, {})
-    ws.append([name, typ, role, i.get('lines'), i.get('arithmetic_count'), i.get('candidate_count'), catcount.get(name, 0)])
+    ws.append([name, typ, role, i.get('lines'), own_arith.get(name, 0), own_money.get(name, 0), catcount.get(name, 0)])
 last = ws.max_row
 style_header(ws, PG, 7)
 body(ws, PG+1, last, 7, wrap_cols=(3,))
@@ -255,7 +263,7 @@ ws.sheet_view.showGridLines = False
 
 # ------------------------------------------------- 6. Arithmetic Detail
 ws = wb.create_sheet('Arithmetic Detail')
-ws['A1'] = 'Every arithmetic statement extracted from the 19 programs read in full'
+ws['A1'] = 'Every arithmetic statement extracted from the 20 programs read in full'
 ws['A1'].font = Font(name=FONT, bold=True, size=14, color=NAVY)
 ws['A2'] = ('Evidence base. "Monetary" flags statements whose operands carry a money keyword. '
             'Filter on Domain or Program to trace a rule back to source.')
@@ -281,7 +289,7 @@ ws.sheet_view.showGridLines = False
 ws = wb.create_sheet('MY Scan Coverage')
 ws['A1'] = 'Repository-wide inventory — every MY member containing arithmetic'
 ws['A1'].font = Font(name=FONT, bold=True, size=14, color=NAVY)
-ws['A2'] = ('All 4,667 members in the 19-Sep-2026 MY snapshot that contain arithmetic. "Read in full" marks the 19 analysed here. '
+ws['A2'] = ('All 4,667 members in the 19-Sep-2026 MY snapshot that contain arithmetic. "Read in full" marks the 20 analysed here. '
             'Use this to judge coverage and to pick the next members to document.')
 ws['A2'].font = Font(name=FONT, size=9, italic=True, color='595959')
 ws.append([]); ws.append(['Member','Path','Lines','Arithmetic statements','With monetary keyword','COMPUTE','MULTIPLY','DIVIDE','ADD / SUBTRACT','Read in full'])
