@@ -53,3 +53,11 @@ CXS120-TXN-CCY-EXP,Scheme transaction record,Transaction currency decimal expone
 WSCPS-MAINT-FIELD-NUMERIC-R,Mass maintenance request,Percentage or absolute change to apply,Percent or amount,"MNT-01, MNT-02, MNT-03",CPU601
 SEC-TC-INSTL-EM-AVL-PER,Authorisation control,Instalment reserve percentage used at authorisation,Fraction,AUT-01,AUS301V
 (hard-coded) 0.0100,CP621660 source,"Cash rebate rate — held in code, not in a table",Fraction,RWD-05,CP621660
+CM-RI2-RATE-* / CM-RI3-RATE-*,Cardholder master,Retail sub-bucket 2 and 3 interest rates,Fraction,RATE-03,CPS333
+CM-CI2-RATE-*,Cardholder master,Cash sub-bucket 2 interest rate,Fraction,RATE-03,CPS333
+NOT-APPLY-RTL1-ADJ / NOT-APPLY-CASH1-ADJ,Cardholder master,Whether the account's rate adjustment is applied,Flag,"RATE-01, RATE-02",CPS333
+TC-MINMAX-EFF-FLAG,Min/max rate table,Must equal 1 or the whole rate clamp is skipped,Flag,RATE-04,CPS333
+TC-MINMAX-MIN-RATE / -MAX-RATE,Min/max rate table,Regulatory floor and ceiling applied to every rate band,Fraction,RATE-04,CPS333
+ABP-INTR-RATE-1 / ABP-INTR-ADJ-1,Account balance process record,"Rate in force at the time, for back-dated recalculation",Fraction,INT-20,CPD110B
+QMTMPT-GLOBAL-RATES,Merchant pricing table,"Scheme global rate, before the base rate is netted off",Percent (/100 in code),MDR-11,CP621690
+WS-BSE-RTE,Merchant pricing,Base rate netted off the global rate,Percent,MDR-11,CP621690
