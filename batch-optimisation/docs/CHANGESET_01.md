@@ -1,10 +1,11 @@
 # Change set 01 — MY batch tuning, phase 1
 
-Seven line-level changes across four JCL members and three PROCs. All are JCL/PROC/CTL
+Nine line-level changes across six JCL members and three PROCs. All are JCL/PROC/CTL
 only: **no COBOL recompile, no genbase, no copybook, no OPC change**, and every one is
 allocation, buffering or blocking — none alters record content or sort order.
 
-Evidence: [`../reports/10_longpole_findings.md`](../reports/10_longpole_findings.md).
+Evidence: [`../reports/10_longpole_findings.md`](../reports/10_longpole_findings.md) and
+[`../reports/11_jcp1704u_jcp2513u.md`](../reports/11_jcp1704u_jcp2513u.md).
 Verification for all seven: [`../jcl/JMYBTUNE.jcl`](../jcl/JMYBTUNE.jcl) — `IEBCOMPR`
 must return RC=00 against the pre-change output.
 
@@ -13,10 +14,12 @@ must return RC=00 against the pre-change output.
 | 1 | `JCP1488U` | BTHJCL | `REGION=18M` → `0M` | Low |
 | 2 | `JCP1489U` | BTHJCL | `REGION=18M` → `0M` | Low |
 | 3 | `JCPAAS09` | BTHJCL | `REGION=18M` → `0M` | Low |
-| 4 | `JCP1484U` | BTHJCL | `REGION=17M` → `0M`, fix `OPTION` card | Medium |
-| 5 | `CLRNP02` | BTHPRC | STEP040: add `DFSPARM`, fix `BLKSIZE` | Low |
-| 6 | `PYMOAAS1` | BTHPRC | 3 × hard-coded `BLKSIZE` → `0` | Low |
-| 7 | `CEDCAAS` | BTHPRC | `OADCBF`: add `AMP` buffers | Low |
+| 4 | `JCP1704U` | BTHJCL | `REGION=18M` → `0M` | Low |
+| 5 | `JCP2513U` | BTHJCL | `REGION=18M` → `0M` | Low |
+| 6 | `JCP1484U` | BTHJCL | `REGION=17M` → `0M`, fix `OPTION` card | Medium |
+| 7 | `CLRNP02` | BTHPRC | STEP040: add `DFSPARM`, fix `BLKSIZE` | Low |
+| 8 | `PYMOAAS1` | BTHPRC | 3 × hard-coded `BLKSIZE` → `0` | Low |
+| 9 | `CEDCAAS` | BTHPRC | `OADCBF`: add `AMP` buffers | Low |
 
 Not in this change set, and deliberately so: the `CLRNP02` / `CLRNP03` virtual tape
 intermediates. That is the largest single lever and it needs a DASD capacity decision
@@ -24,7 +27,7 @@ from storage — see §6 of the findings report.
 
 ---
 
-## 1–3. Lift `REGION` on `JCP1488U`, `JCP1489U`, `JCPAAS09`
+## 1–5. Lift `REGION` on the five capped jobs
 
 A DFSORT step in an 18 MB region cannot take `MAINSIZE=MAX`, cannot Hipersort and
 cannot use memory object sorting. The control member is ignored; the job card wins.
@@ -53,6 +56,30 @@ after:
 // MSGCLASS=X,REGION=0M,CLASS=A,NOTIFY=&SYSUID    TUNE01 WAS 18M
 ```
 
+`JCP1704U`, before:
+
+```jcl
+// MSGCLASS=X,COND=(0,NE),REGION=18M,CLASS=A
+```
+
+after:
+
+```jcl
+// MSGCLASS=X,COND=(0,NE),REGION=0M,CLASS=A       TUNE01 WAS 18M
+```
+
+`JCP2513U`, before:
+
+```jcl
+// MSGCLASS=X,REGION=18M,COND=(0,NE)
+```
+
+after:
+
+```jcl
+// MSGCLASS=X,REGION=0M,COND=(0,NE)               TUNE01 WAS 18M
+```
+
 **Precedent.** `JCQDY760` already carries this exact change, annotated in the member:
 
 ```
@@ -64,8 +91,14 @@ next reader sees the history the same way.
 
 **Watch for.** `REGION=0M` lets a step take what it asks for. If a looping program
 previously died on a storage constraint it will now run longer before failing. Confirm
-with capacity planning that the initiator class can carry four more unbounded jobs in
+with capacity planning that the initiator class can carry five more unbounded jobs in
 the 12am–8am window; that is a conversation, not a blocker.
+
+**Separately, not in this change set.** `JCP1704U` and `JCP2513U` both carry
+`COND=(0,NE)` on the **JOB** card rather than at step level. IA item E6 asks for
+acceptable return codes to be defined per step. Leave it alone here — changing a
+job-level `COND` alters which steps run after a non-zero RC, which is a behaviour change
+and belongs with the scheduler owner, not in a tuning change.
 
 ---
 
@@ -219,12 +252,12 @@ sequential bias is right.
 
 ## Deployment
 
-Seven members, two libraries. The three-way symmetry check applies — the identical
+Nine members, two libraries. The three-way symmetry check applies — the identical
 member list in all three jobs:
 
 | Job | Direction | Members |
 | --- | --- | --- |
-| Pre-deployment safety copy | `PRDCRD.BTHJCL.MY20A2` → `.FALLBACK`<br>`PRDCRD.BTHPRC.MY20A2` → `.FALLBACK` | `JCP1488U` `JCP1489U` `JCPAAS09` `JCP1484U` / `CLRNP02` `PYMOAAS1` `CEDCAAS` |
+| Pre-deployment safety copy | `PRDCRD.BTHJCL.MY20A2` → `.FALLBACK`<br>`PRDCRD.BTHPRC.MY20A2` → `.FALLBACK` | `JCP1488U` `JCP1489U` `JCPAAS09` `JCP1704U` `JCP2513U` `JCP1484U` / `CLRNP02` `PYMOAAS1` `CEDCAAS` |
 | Deployment | `MGRCRD.*` → `PRDCRD.*` | same, plus `DYNALL64` into `PRDCRD.BTHCTL.MY20A2` |
 | Fallback | `.FALLBACK` → `PRDCRD.*` | same |
 
@@ -236,7 +269,7 @@ for, and this one is legitimate.
 No load module changes, so fallback is a member copy back: well inside the ≤1 hour
 commitment on the RFC risk assessment.
 
-**Suggested split.** Items 1–3 and 5–7 are low risk and can travel together. Item 4
+**Suggested split.** Items 1–5 and 7–9 are low risk and can travel together. Item 6
 should wait for the `ICETOOL COUNT` measurement and go as its own change with its own
 UAT cycle, because it is the one where a wrong number changes behaviour rather than
 just performance.

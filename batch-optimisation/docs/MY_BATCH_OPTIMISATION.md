@@ -232,9 +232,26 @@ block would hold 27.
 
 **`CEDCAAS` has one VSAM DD with no buffers.** Four of five are tuned; `OADCBF` is not.
 
-Seven of these are line-level changes with no recompile, no genbase and no OPC change. They
-are written up with exact before/after text in
-[`CHANGESET_01.md`](CHANGESET_01.md).
+**`JCP1704U` sorts the plastic master twice.** `S020SORT` and `S090SORT` read the same
+`CPBPLT` on the same key and differ only in which ORG codes they keep — two complete passes
+to produce two disjoint subsets. One DFSORT pass with two `OUTFIL` groups produces both. This
+is the highest-value single change found: `JCP1704U` runs daily and cost **2,326 minutes in
+June**, the third largest in the estate. Its `JOINKEYS` step and its 3,000-cylinder `REPRO`
+load are also completely untuned, where three sibling steps in the same job are not.
+
+**`JCP2513U` has a duplicate step name.** `CSSUBS1C` is coded twice — once for history file 1
+and again for the merchant-posted block, which was cloned from it. Step-level `COND=`
+references bind to the first, and restart-at-step is ambiguous, so an operator restarting
+after an abend in the merchant block can silently re-run the history rebuild. That is a
+correctness fix, not a tuning one. The job also runs sixteen `IDCAMS REPRO` loads with no
+buffers, and gives its six *largest* sorts no size estimate while its four smallest get one.
+It ran **once** in June, so per unit of effort it is worth about 3% of `JCP1704U`.
+
+Full write-up: [`11_jcp1704u_jcp2513u.md`](../reports/11_jcp1704u_jcp2513u.md).
+
+Nine of these are line-level changes with no recompile, no genbase and no OPC change, written
+up with exact before/after text in [`CHANGESET_01.md`](CHANGESET_01.md). The structural items
+for the two jobs above are in [`CHANGESET_02.md`](CHANGESET_02.md).
 
 ---
 
@@ -262,30 +279,39 @@ output-identical and timed on the same data before it is proposed to CAB.
 
 ## 6. Recommended order of work
 
+Ordered by **monthly** value, not per-run: a 70-minute job that runs once is worth a
+thirtieth of a 70-minute job that runs nightly.
+
 | # | Action | Target | Risk | Needs |
 | --- | --- | --- | --- | --- |
-| 1 | Lift `REGION` from 17M/18M to 0M | `JCP1488U` `JCP1489U` `JCPAAS09` `JCP1484U` | Low — precedent exists | Capacity nod on initiator classes |
-| 2 | Fix `JCP1484U`'s sort estimate | `FILSZ=E80000` → measured | Medium | `ICETOOL COUNT` on MILOG |
-| 3 | Give `CLRNP02` STEP040 a `DFSPARM` and real `BLKSIZE` | PROC `CLRNP02` | Low | UAT run + `IEBCOMPR` |
-| 4 | Unblock the three `PYMOAAS1` outputs | PROC `PYMOAAS1` | Low | UAT run + `IEBCOMPR` |
-| 5 | Add the missing `AMP` to `CEDCAAS` `OADCBF` | PROC `CEDCAAS` | Low | UAT run + `IEBCOMPR` |
-| 6 | Pull the `PFTPPR1` spool for `JCPAAS09`'s outlier date | 145 min night | None (investigation) | Job logs |
-| 7 | Identify the plan owner for `RMMDLM01` | 116.87 min/run | None | Scheduler owner |
-| 8 | Add a `DFSPARM` member to the top sort members by runtime | [`09`](../reports/09_priority_targets.csv) | Low — allocation only | UAT run + `IEBCOMPR` |
-| 9 | Add `AMP=('ACCBIAS=SO')` to sequential master reads | CP6 mains | Low — buffering only | UAT run + `IEBCOMPR` |
-| 10 | Convert the last two `IEBGENER` steps | [`07`](../reports/07_copy_candidates.csv) | Low | UAT run |
-| 11 | Bring the `CLRNP02`/`CLRNP03` tape intermediates back to DASD | A7#2 chain | Medium | **Storage capacity decision** |
-| 12 | Collapse sort intermediates | `JCP0756R`, `JCP0540R`, `JCP0214R` | Medium — step structure changes | Owner review, `IEBCOMPR` |
-| 13 | Partition a long runner | `JCP1488U`, once 1–3 and 11 are done | **High** — OPC + application logic | Owner sign-off, OPC change, QCARD update |
+| 1 | Lift `REGION` from 17M/18M to 0M | six JCL members | Low — precedent exists | Capacity nod on initiator classes |
+| 2 | Collapse the double `CPBPLT` sort | `JCP1704U`, 2,326 min/month | Low — output-neutral | UAT run + `IEBCOMPR` |
+| 3 | Tune the `JOINKEYS` step and the `REPRO` load | `JCP1704U` | Low — DD-level | UAT run + `IEBCOMPR` |
+| 4 | **Rename the duplicate `CSSUBS1C`** | `JCP2513U` | Low | Check OPC/QRG references |
+| 5 | Fix `JCP1484U`'s sort estimate | `FILSZ=E80000` → measured | Medium | `ICETOOL COUNT` on MILOG |
+| 6 | Give `CLRNP02` STEP040 a `DFSPARM` and real `BLKSIZE` | PROC `CLRNP02` | Low | UAT run + `IEBCOMPR` |
+| 7 | Unblock the three `PYMOAAS1` outputs | PROC `PYMOAAS1` | Low | UAT run + `IEBCOMPR` |
+| 8 | Add the missing `AMP` to `CEDCAAS` `OADCBF` | PROC `CEDCAAS` | Low | UAT run + `IEBCOMPR` |
+| 9 | Pull the `PFTPPR1` spool for `JCPAAS09`'s outlier date | 145 min night | None (investigation) | Job logs |
+| 10 | Add a `DFSPARM` member to the top sort members by runtime | [`09`](../reports/09_priority_targets.csv) | Low — allocation only | UAT run + `IEBCOMPR` |
+| 11 | Add `AMP=('ACCBIAS=SO')` to sequential master reads | CP6 mains | Low — buffering only | UAT run + `IEBCOMPR` |
+| 12 | Convert the last two `IEBGENER` steps | [`07`](../reports/07_copy_candidates.csv) | Low | UAT run |
+| 13 | Buffer the eight `REPRO` loads, estimate the six sorts | `JCP2513U` | Low — DD-level | Monthly job; bundle with 10 |
+| 14 | Bring the `CLRNP02`/`CLRNP03` tape intermediates back to DASD | A7#2 chain | Medium | **Storage capacity decision** |
+| 15 | Collapse sort intermediates | `JCP0756R`, `JCP0540R`, `JCP0214R` | Medium — step structure changes | Owner review, `IEBCOMPR` |
+| 16 | Merge the two `CP608250` executions | `JCP1704U` | Unknown | Application owner |
+| 17 | Split the eight rebuild blocks | `JCP2513U` | **High** — OPC + rotation rule | Owner sign-off, OPC change |
+| 18 | Partition a long runner | `JCP1488U`, after 1, 6 and 14 | **High** — OPC + application logic | Owner sign-off, OPC change, QCARD update |
 
-Items 1, 3, 4 and 5 are written up with exact before/after text in
-[`CHANGESET_01.md`](CHANGESET_01.md) and can travel as one JCL/PROC/CTL change. Item 2 should
-go separately once the volume is measured, because it is the one where a wrong number changes
-behaviour rather than just performance. Items 11–13 each need their own UAT cycle.
+Items 1 and 6–8 are [`CHANGESET_01.md`](CHANGESET_01.md); items 2–4 and 13 are
+[`CHANGESET_02.md`](CHANGESET_02.md). Both change sets touch `JCP1704U` and `JCP2513U`, so
+if change set 01 has not deployed yet, fold them together rather than putting the same member
+through twice — that is precisely what the clash check exists to catch.
 
-Item 11 is the largest single lever in this document and the only one blocked on a decision
-rather than on work: six tape I/Os sit on the longest chain in the batch, and whether they
-come back to DASD is a capacity call, not an application one.
+Item 5 should go separately once the volume is measured, because it is the one where a wrong
+number changes behaviour rather than just performance. Item 14 is the largest single lever in
+this document and the only one blocked on a decision rather than on work: six tape I/Os sit on
+the longest chain in the batch, and whether they come back to DASD is a capacity call.
 
 ---
 
@@ -301,9 +327,11 @@ State these limitations in the CAB pack rather than letting a reviewer find them
 - **The long poles were read individually instead**, from the source snapshot rather than the
   repository, so §4.5 and [`CHANGESET_01.md`](CHANGESET_01.md) rest on the actual members and
   PROCs. `RMMDLM01` is the exception: it is not in the MY JCL library under that name and no A7
-  operation claims it, so the largest single consumer in the estate is still unread.
-- **`JCP2513U` and `JCP1704U` have not been opened.** Both are large members (24 KB and 13 KB)
-  and both are outside the A7#2 chain that §4.5 concentrates on.
+  operation claims it, so the largest single consumer in the estate is still unread. It is out
+  of scope by decision, not by oversight — nothing else in this document depends on it.
+- **`JCP1704U` and `JCP2513U` have now been read** and are written up in
+  [`11_jcp1704u_jcp2513u.md`](../reports/11_jcp1704u_jcp2513u.md). Of the seven jobs §2 and §3
+  name, only `RMMDLM01` remains unopened.
 - **Dependencies are partial.** 536 MY relationships are marked `Parsed`; continuation-only
   OPC lines were never recovered. Every chain in §1 is a **proven lower bound**, never an upper
   bound. The real critical path can only be longer.
@@ -319,8 +347,9 @@ State these limitations in the CAB pack rather than letting a reviewer find them
 
 ## 8. Change-safety triage
 
-Per Impact Analysis Checklist v3, for items 1 and 3–5 of §6 — the change set in
-[`CHANGESET_01.md`](CHANGESET_01.md):
+Per Impact Analysis Checklist v3, for the two change sets —
+[`CHANGESET_01.md`](CHANGESET_01.md) (§6 items 1, 6–8) and
+[`CHANGESET_02.md`](CHANGESET_02.md) (§6 items 2–4, 13):
 
 | Type | Applies | Section |
 | --- | --- | --- |
@@ -328,7 +357,7 @@ Per Impact Analysis Checklist v3, for items 1 and 3–5 of §6 — the change se
 | T2 COBOL source change | No | — |
 | T3 Copybook layout change | No | — |
 | T4 Interface / file transfer change | No | — |
-| T5 OPC / scheduling change | **Only for §6 item 13** | E |
+| T5 OPC / scheduling change | **Only for §6 items 17–18**, and for item 4 if an OPC restart instruction or QRG names `CSSUBS1C` | E |
 | T6 Screen / access change | No | — |
 | T7 AUC080 / AUC002 / AUS005 / CXS120 / POS MODE | No | — |
 
@@ -343,6 +372,10 @@ Section A items to satisfy:
 - **A3** — `DYNALLOC=(SYSDA,64)` and the `SPACE` figures in the patterns are sized for
   production volumes, and all secondary allocations meet the 100-CYL shop minimum.
 - **A5** — condition-code control is at step level, not job level.
+
+Section A note for change set 02: item 2 deletes a step (`S090SORT`). Confirm no OPC
+restart instruction, QRG or operator runbook names it; if one does, leave the step in place
+as an `IEFBR14` no-op so restart points stay valid.
 
 Section I — deployment is a member copy, no compile and no genbase:
 
