@@ -1,0 +1,12 @@
+Cardlink Batch Dependency Repository — Populated,
+Scope,"MY A7 and SG H9/H9#2 scheduler plans, Dec-2025 and Jun-2026 execution statistics, MY/SG SLA, and MY/SG JCL evidence."
+Dependency confidence,Rows marked Parsed are explicit 3-job or cross-application ALWAYS relationships recovered from the OPC listing. Continuation-only lines require scheduler-owner validation.
+SG scope,SG H9 and H9#2 operations and explicit dependencies populated from H96_LIST.txt. SG SLA workbook is included.
+Runtime mapping,A7 J7* development names were matched to production statistics using unique job-name suffixes. Review mappings marked Ambiguous or Not found.
+Security,Contact details and escalation text from SLA were not copied into this repository.
+MY unmatched treatment,User-confirmed unmatched MY jobs are classified as Development only / Not implemented in production.
+Additional statistics,"December 2025 statistics were added for 843 Batch_Jobs rows, alongside June 2026 statistics."
+SG SLA update,Imported 53 SG SLA job rows without escalation/contact details.
+SG user updates,8 SG production mappings normalized and enriched; 9 remaining unobserved SG jobs classified as development-only.
+Review enhancements,"Live support checks, compact operational views, conditional review flags, and consistent runtime formats added on 2026-07-20."
+Privacy handling,Embedded support contacts and restricted network paths were removed from the reviewed copy. Use the approved support roster.

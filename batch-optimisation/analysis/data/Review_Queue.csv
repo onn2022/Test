@@ -1,0 +1,3 @@
+Region,Application/Plan,Operation,Development Job,Current Candidate,Issue,Required Action
+SG,TSGCLKH9,CPU_003,S9ISM#1,SAISM#1,Multiple production candidates,Application owner to confirm exact production job
+SG,,,,,SLA supplemental rows,Map only when an OPC relationship is confirmed; retained as production SLA inventory

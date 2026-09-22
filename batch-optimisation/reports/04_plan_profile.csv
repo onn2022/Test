@@ -1,0 +1,7 @@
+plan,live_jobs,work_min_avg,work_min_p95,longest_parsed_chain_min,chain_jobs
+TMYCLKA7,243,591.6,732.9,93.1,6
+TMYCLKA7#4,246,338.5,433.2,71.2,2
+TMYCLKA7#2,70,177.0,192.8,103.1,4
+TMYCLKA7#5,113,131.0,160.8,33.4,2
+TMYCLKA7#3,49,40.7,56.3,15.7,4
+TMYCLKA7#6,27,15.0,17.5,5.3,5
