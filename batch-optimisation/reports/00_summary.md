@@ -43,11 +43,11 @@ Jun-26 is **+72.2 min (+5.9%)** against Dec-25 on the same job set.
 | --- | ---: |
 | JCL members captured (of 2,475 in the sheet) | 731 |
 | ... running SORT / ICETOOL | 344 |
-| ... running SORT with no DYNALL* control member | 287 |
+| ... running SORT with no DFSORT parm member (ICPK*/DYNALL*) | 205 |
 | ... landing sort output on permanent DASD | 60 |
 | ... still running IEBGENER | 2 |
 
-Joined to the Jun-26 statistics, **212 members** carrying **353 min** of measured
+Joined to the Jun-26 statistics, **157 members** carrying **248 min** of measured
 elapsed time per cycle have at least one of those signals (09_priority_targets.csv).
 
 Stability: the 391 jobs with >=20 runs and >=1 min average carry **687 min**

@@ -21,7 +21,11 @@ jcl/
   JMYBTUNE.jcl            UAT A/B harness proving output equivalence
 docs/
   MY_BATCH_OPTIMISATION.md   findings, recommendations, IA triage
+  CHANGESET_01.md            seven line-level changes, exact before/after
 ```
+
+`reports/00_summary.md` and `10_longpole_findings.md` are the two worth reading first:
+the estate profile, and what the four biggest jobs actually do step by step.
 
 ## Regenerating the analysis
 

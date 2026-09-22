@@ -110,26 +110,32 @@ From the captured JCL evidence (731 of 2,475 MY members — see §7):
 | Signal | Members | Report |
 | --- | ---: | --- |
 | Running SORT / ICETOOL | 344 | — |
-| …with **no** `DYNALL*` control member | **287** | [`05`](../reports/05_sort_dynalloc_candidates.csv) |
+| …with **no** DFSORT parm member (`ICPK*`/`DYNALL*`) | **205** | [`05`](../reports/05_sort_dynalloc_candidates.csv) |
 | Landing sort output on permanent DASD | 60 | [`06`](../reports/06_sort_intermediates.csv) |
 | Still running `IEBGENER` | 2 | [`07`](../reports/07_copy_candidates.csv) |
 | Running `IDCAMS` | 388 | — |
 
-Cross-referencing those signals against measured runtime gives **212 members carrying
-353 minutes of measured elapsed time per cycle** that have at least one JCL-level tuning
+Cross-referencing those signals against measured runtime gives **157 members carrying
+248 minutes of measured elapsed time per cycle** that have at least one JCL-level tuning
 signal — [`09_priority_targets.csv`](../reports/09_priority_targets.csv).
 
-### 4.1 Sort work allocation — 287 members
+### 4.1 Sort work allocation — 205 members
 
-Only 57 captured members reference a `DYNALL*` control member; the shop already has `DYNALL32`,
-so the pattern is established and simply not applied consistently. The rest run on whatever
-`SORTWKnn` DD cards the member happens to code, which is why sort capacity failures track
-file growth.
+The estate tunes a sort by pointing `DFSPARM` at a control member in `&CNTLLIB`. Two
+families exist: `DYNALL<n>` sets the sort-work count, and `ICPK<nnnn>` carries a size
+estimate plus dynamic allocation — `ICPK5000` is
+`OPTION FILSZ=E5000000,DYNALLOC=(DISK,32)`, and the number scales the estimate
+(`ICPK0050`, `ICPK0100`, `ICPK0250`, `ICPK0500`, `ICPK1000`, `ICPK2000`, `ICPK3000`,
+`ICPK4000` are all in use).
+
+139 of the 344 captured sort members reference one. The other **205 run on whatever
+`SORTWKnn` DD cards the member happens to code** — no size estimate, no dynamic
+allocation — which is why sort capacity failures track file growth.
 
 Fix: add one DD to the step and change nothing else.
 
 ```jcl
-//SORTCNTL DD  DSN=&CNTLLIB(DYNALL64),DISP=SHR
+//DFSPARM  DD  DSN=&CNTLLIB(DYNALL64),DISP=SHR
 ```
 
 [`../jcl/DYNALL64.ctl`](../jcl/DYNALL64.ctl) supplies `DYNALLOC=(SYSDA,64)`, `MAINSIZE=MAX`,
@@ -140,16 +146,20 @@ The member deliberately excludes `NOEQUALS` and `VLSHRT`. Both are genuine perfo
 and both change results; they are per-job decisions for the application owner, never a
 shop-wide default.
 
+Where a step's record volume is known, prefer the matching `ICPK` member instead — a
+correct `FILSZ` is worth more than extra work datasets, and §4.6 shows what a stale
+estimate costs. `DYNALL64` is for steps whose volume is unknown or varies widely.
+
 Highest-value candidates with measured runtime: `JCP1028U` (46.12 min, the largest tunable
-job in plan TMYCLKA7),
-`JCP1056U` (11.03), `JCP0459R` (9.08, also writes 3 permanent intermediates).
+job in plan TMYCLKA7), `JCP0497U` (7.55, also writes 3 permanent intermediates),
+`JCP0680U` (5.71), `JCP0708U` (4.73). 113 of the 205 run daily.
 
 ### 4.2 Sort intermediates on permanent DASD — 60 members
 
 60 members write sort output to a permanent `.SORT` / `.SRT` / `.SORTED` dataset and read it
 back in a later step. Each intermediate costs a full write plus a full read. The worst are
 `JCP0756R` (10 intermediates, 49 datasets), `JCP0540R` (6), `JCP0214R` (4), `JCP0363R` (4),
-`JCP0848U` (4), `JCP1233U` (4).
+`JCP0848U` (4), `JCP1233U` (4); 26 of the 60 run daily, led by `JCP0506U` (32.68 min).
 
 Fix: collapse the fan-out into a single DFSORT pass with `OUTFIL FNAMES=` — pattern **P3** in
 [`../jcl/PATTERNS.jcl`](../jcl/PATTERNS.jcl). Keep the output DSNs if downstream jobs or the
@@ -172,13 +182,59 @@ same file. All are performance-only.
 
 ### 4.4 Partitioning a long runner
 
-For `JCP1488U` and `JCP2513U`, parameter tuning will not close a 70-minute gap. Pattern **P6**
-splits the master by key range so the ranges run as parallel jobs in the same plan.
+Where parameter tuning cannot close a 70-minute gap, pattern **P6** splits the master by key
+range so the ranges run as parallel jobs in the same plan.
 
 This is the only recommendation here that needs an OPC change and an application-owner
 decision: it is safe **only** where the program carries no cross-account state and no control
-total spanning the whole file. Confirm before use — and note that neither member appears in
-the captured JCL evidence, so their step structure has not been read yet.
+total spanning the whole file. Confirm before use. For `JCP1488U` specifically, §4.5 shows
+there is a great deal of cheaper work to do first.
+
+### 4.5 What the long poles actually do
+
+The JCL members and the PROCs they invoke have now been read from the source snapshot.
+Full write-up: [`10_longpole_findings.md`](../reports/10_longpole_findings.md). The
+headlines:
+
+**`REGION` is capped on four of the five biggest or least stable jobs.** `JCP1488U`,
+`JCP1489U` and `JCPAAS09` run `REGION=18M`; `JCP1484U` runs `REGION=17M`. A DFSORT step in an
+18 MB region cannot take `MAINSIZE=MAX`, cannot Hipersort and cannot use memory object
+sorting — so §4.1's control member is ignored until the job card is lifted. `JCQDY760` is the
+exception at `REGION=0M`, and it says why in its own source:
+
+```
+//* LASTCHANGE MYC2DTA 27/05/2020 CHANGE REGION FROM 17M TO 0M
+```
+
+The estate has already made this change once, deliberately, and annotated it. That is the
+precedent to cite at CAB.
+
+**The A7#2 chain is virtual-tape bound end to end.** PROC `CLRNP02` (74 min) writes three
+intermediates to `UNIT=VTAPE1` and reads two of them straight back; PROC `CLRNP03` (27 min)
+then reads the third one — the file `CLRNP02` just wrote — back off tape to load the `CPADD`
+KSDS. Three tape writes and three tape reads across the two jobs that *are* the longest chain
+in the batch.
+
+**`CLRNP02` STEP040 is the untuned sort in the most expensive job.** STEP020 and STEP080 both
+carry `DFSPARM DD &CNTLLIB(ICPK5000)`. STEP040 carries nothing, and codes a null block size,
+`DCB=(RECFM=FB,LRECL=800,BLKSIZE=)`.
+
+**`JCP1484U`'s 5-hour night is explained by its own `OPTION` card**, `FILSZ=E80000,
+DYNALLOC=(DISK)`: an 80,000-record estimate on a file that outgrew it, with no work-dataset
+count, in a 17 MB region. The member also records that its input was moved to virtual tape in
+2022 to relieve DASD — and the sort estimate was never revisited afterwards.
+
+**`JCPAAS09`'s 145-minute night is probably not the encryption.** PROC `PYMOAAS1` ends with an
+FTP of four files to an external Asccend endpoint. A 14× overrun with a P95 *below* the
+average is the shape of one hung transfer, not of gradual growth. Three of its four output
+files are also badly under-blocked — `PAYMAT4` writes two records per block where a half-track
+block would hold 27.
+
+**`CEDCAAS` has one VSAM DD with no buffers.** Four of five are tuned; `OADCBF` is not.
+
+Seven of these are line-level changes with no recompile, no genbase and no OPC change. They
+are written up with exact before/after text in
+[`CHANGESET_01.md`](CHANGESET_01.md).
 
 ---
 
@@ -191,10 +247,12 @@ invention.
 
 What the data does support:
 
-1. **353 minutes per cycle** of measured elapsed time sits in members with a JCL-level tuning
+1. **248 minutes per cycle** of measured elapsed time sits in members with a JCL-level tuning
    signal. That is the bounded opportunity for §4.1–4.3.
 2. **687 minutes per cycle** of P95-over-average headroom is the stability prize in §3.
 3. **72 minutes per cycle** of drift has accumulated since Dec-25 and is unexplained.
+4. **101 minutes per cycle** sit in the two A7#2 jobs whose intermediates live on virtual
+   tape (§4.5) — the one place where the mechanism, not just the opportunity, is now known.
 
 Measure, don't estimate: [`../jcl/JMYBTUNE.jcl`](../jcl/JMYBTUNE.jcl) runs the untuned and
 tuned outputs through `ICETOOL COUNT` and `IEBCOMPR`, so each change is proved
@@ -206,17 +264,28 @@ output-identical and timed on the same data before it is proposed to CAB.
 
 | # | Action | Target | Risk | Needs |
 | --- | --- | --- | --- | --- |
-| 1 | Root-cause the two runaways | `JCP1484U`, `JCPAAS09` | None (investigation) | Job logs for the outlier dates |
-| 2 | Identify the plan owner for `RMMDLM01` | 116.87 min/run | None | Scheduler owner |
-| 3 | Add `DYNALL64` to the top 20 sort members by runtime | [`09`](../reports/09_priority_targets.csv) | Low — allocation only | UAT run + `IEBCOMPR` |
-| 4 | Add `AMP=('ACCBIAS=SO')` to sequential master reads | CP6 mains | Low — buffering only | UAT run + `IEBCOMPR` |
-| 5 | Collapse sort intermediates | `JCP0756R`, `JCP0540R`, `JCP0214R` | Medium — step structure changes | Owner review, `IEBCOMPR` |
-| 6 | Convert the last two `IEBGENER` steps | [`07`](../reports/07_copy_candidates.csv) | Low | UAT run |
-| 7 | Read the step structure of the four long poles | `JCP1488U`, `JCP2513U`, `JCQDY760`, `JQMDY09` | None (analysis) | Full JCL evidence (§7) |
-| 8 | Partition a long runner | `JCP1488U` first | **High** — OPC + application logic | Owner sign-off, OPC change, QCARD update |
+| 1 | Lift `REGION` from 17M/18M to 0M | `JCP1488U` `JCP1489U` `JCPAAS09` `JCP1484U` | Low — precedent exists | Capacity nod on initiator classes |
+| 2 | Fix `JCP1484U`'s sort estimate | `FILSZ=E80000` → measured | Medium | `ICETOOL COUNT` on MILOG |
+| 3 | Give `CLRNP02` STEP040 a `DFSPARM` and real `BLKSIZE` | PROC `CLRNP02` | Low | UAT run + `IEBCOMPR` |
+| 4 | Unblock the three `PYMOAAS1` outputs | PROC `PYMOAAS1` | Low | UAT run + `IEBCOMPR` |
+| 5 | Add the missing `AMP` to `CEDCAAS` `OADCBF` | PROC `CEDCAAS` | Low | UAT run + `IEBCOMPR` |
+| 6 | Pull the `PFTPPR1` spool for `JCPAAS09`'s outlier date | 145 min night | None (investigation) | Job logs |
+| 7 | Identify the plan owner for `RMMDLM01` | 116.87 min/run | None | Scheduler owner |
+| 8 | Add a `DFSPARM` member to the top sort members by runtime | [`09`](../reports/09_priority_targets.csv) | Low — allocation only | UAT run + `IEBCOMPR` |
+| 9 | Add `AMP=('ACCBIAS=SO')` to sequential master reads | CP6 mains | Low — buffering only | UAT run + `IEBCOMPR` |
+| 10 | Convert the last two `IEBGENER` steps | [`07`](../reports/07_copy_candidates.csv) | Low | UAT run |
+| 11 | Bring the `CLRNP02`/`CLRNP03` tape intermediates back to DASD | A7#2 chain | Medium | **Storage capacity decision** |
+| 12 | Collapse sort intermediates | `JCP0756R`, `JCP0540R`, `JCP0214R` | Medium — step structure changes | Owner review, `IEBCOMPR` |
+| 13 | Partition a long runner | `JCP1488U`, once 1–3 and 11 are done | **High** — OPC + application logic | Owner sign-off, OPC change, QCARD update |
 
-Items 1–4 and 6 are JCL/CTL-only, carry no recompile and no genbase, and can travel as one
-change. Items 5 and 8 should be separate changes with their own UAT cycles.
+Items 1, 3, 4 and 5 are written up with exact before/after text in
+[`CHANGESET_01.md`](CHANGESET_01.md) and can travel as one JCL/PROC/CTL change. Item 2 should
+go separately once the volume is measured, because it is the one where a wrong number changes
+behaviour rather than just performance. Items 11–13 each need their own UAT cycle.
+
+Item 11 is the largest single lever in this document and the only one blocked on a decision
+rather than on work: six tape I/Os sit on the longest chain in the batch, and whether they
+come back to DASD is a capacity call, not an application one.
 
 ---
 
@@ -224,12 +293,17 @@ change. Items 5 and 8 should be separate changes with their own UAT cycles.
 
 State these limitations in the CAB pack rather than letting a reviewer find them.
 
-- **JCL evidence is partial.** 731 of the 2,475 MY JCL members were recoverable; both Google
-  Drive renderings of the repository truncate at ~1 MB, at `JCP1346R` alphabetically. The four
-  long poles (`JCP1488U`, `JCP2513U`, `JCP1704U`, `RMMDLM01`) fall past the cut, so §4's member
-  counts are a **lower bound** and the long poles have not had their steps read. Re-running
+- **The statistical JCL inventory is partial.** 731 of the 2,475 MY JCL members were
+  recoverable from the repository; both Google Drive renderings truncate at ~1 MB, at
+  `JCP1346R` alphabetically. So §4's member counts are a **lower bound**. Re-running
   [`../analysis/extract_repository.py`](../analysis/extract_repository.py) against the full
   `.xlsx` on a workstation closes this gap and the rest of the analysis reruns unchanged.
+- **The long poles were read individually instead**, from the source snapshot rather than the
+  repository, so §4.5 and [`CHANGESET_01.md`](CHANGESET_01.md) rest on the actual members and
+  PROCs. `RMMDLM01` is the exception: it is not in the MY JCL library under that name and no A7
+  operation claims it, so the largest single consumer in the estate is still unread.
+- **`JCP2513U` and `JCP1704U` have not been opened.** Both are large members (24 KB and 13 KB)
+  and both are outside the A7#2 chain that §4.5 concentrates on.
 - **Dependencies are partial.** 536 MY relationships are marked `Parsed`; continuation-only
   OPC lines were never recovered. Every chain in §1 is a **proven lower bound**, never an upper
   bound. The real critical path can only be longer.
@@ -245,7 +319,8 @@ State these limitations in the CAB pack rather than letting a reviewer find them
 
 ## 8. Change-safety triage
 
-Per Impact Analysis Checklist v3, for items 1–4 and 6 of §6:
+Per Impact Analysis Checklist v3, for items 1 and 3–5 of §6 — the change set in
+[`CHANGESET_01.md`](CHANGESET_01.md):
 
 | Type | Applies | Section |
 | --- | --- | --- |
@@ -253,7 +328,7 @@ Per Impact Analysis Checklist v3, for items 1–4 and 6 of §6:
 | T2 COBOL source change | No | — |
 | T3 Copybook layout change | No | — |
 | T4 Interface / file transfer change | No | — |
-| T5 OPC / scheduling change | **Only for §6 item 8** | E |
+| T5 OPC / scheduling change | **Only for §6 item 13** | E |
 | T6 Screen / access change | No | — |
 | T7 AUC080 / AUC002 / AUS005 / CXS120 / POS MODE | No | — |
 

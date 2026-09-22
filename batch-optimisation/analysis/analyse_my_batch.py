@@ -12,7 +12,7 @@ Reports produced:
     02_instability.csv              jobs whose worst run dwarfs their average
     03_critical_path.csv            longest parsed OPC chain, per plan
     04_plan_profile.csv             work and chain length per A7 plan
-    05_sort_dynalloc_candidates.csv SORT/ICETOOL members with no DYNALL* member
+    05_sort_dynalloc_candidates.csv SORT/ICETOOL members with no DFSORT parm member
     06_sort_intermediates.csv       members landing sort output on permanent DASD
     07_copy_candidates.csv          IEBGENER members still to move to ICEGENER
     09_priority_targets.csv         tuning signals joined to measured runtime
@@ -30,6 +30,13 @@ from collections import Counter, defaultdict, deque
 CYCLES_JUN26 = 32          # daily cycles observed in the Jun-2026 statistics
 SORT_PROGRAMS = ('SORT', 'ICETOOL', 'ICEMAN', 'SYNCSORT')
 INTERMEDIATE_RE = re.compile(r'\.(SORT\d*|SRT\d*|SORTED)$')
+
+# The estate tunes a sort by pointing DFSPARM/SORTCNTL at a control member in
+# &CNTLLIB.  Two families exist: DYNALL<n> sets the sort-work count, and
+# ICPK<nnnn> carries a FILSZ estimate plus DYNALLOC - e.g. ICPK5000 is
+# "OPTION FILSZ=E5000000,DYNALLOC=(DISK,32)".  A member referencing either is
+# tuned; anything else runs on whatever SORTWKnn it happens to code.
+SORT_PARM_RE = re.compile(r'\((ICPK[0-9A-Z]*|DYNALL[0-9A-Z]*)\)')
 
 
 def number(value):
@@ -145,8 +152,8 @@ def jcl_signals(inventory):
         name = member['JCL Member']
 
         sorts = [p for p in programs if p in SORT_PROGRAMS]
-        has_dynall = any('DYNALL' in dataset for dataset in datasets)
-        if sorts and not has_dynall:
+        has_parm = bool(SORT_PARM_RE.search(member['Datasets (max 50)']))
+        if sorts and not has_parm:
             dynalloc.append((name, ' '.join(sorts), len(datasets),
                              member['First Evidence Line'], member['Last Evidence Line']))
 
@@ -314,7 +321,7 @@ def main():
         '| --- | ---: |',
         '| JCL members captured (of 2,475 in the sheet) | %d |' % len(inventory),
         '| ... running SORT / ICETOOL | %d |' % len(sort_members),
-        '| ... running SORT with no DYNALL* control member | %d |' % len(dynalloc),
+        '| ... running SORT with no DFSORT parm member (ICPK*/DYNALL*) | %d |' % len(dynalloc),
         '| ... landing sort output on permanent DASD | %d |' % len(intermediates),
         '| ... still running IEBGENER | %d |' % len(iebgener),
         '',
